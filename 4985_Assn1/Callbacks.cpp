@@ -54,3 +54,21 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 	SI->totalBytesTransferred += countActualBytes(SI->DataBuf.buf, BytesTransferred);
 	OutputDebugString(cstr);
 }
+
+// For when client gets file sent to it
+void CALLBACK clnRecvStreamCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags) {
+	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(Overlapped->hEvent);
+	if (Error != 0 || BytesTransferred == 0)
+	{
+		// Either a bad error occurred on the socket or the socket was closed by a peer
+		closesocket(SI->Socket);
+		return;
+	}
+	// Print stats
+	char cstr[1024];
+	SI->BytesRECV = countActualBytes(SI->DataBuf.buf, BytesTransferred);
+	sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
+	SI->totalBytesTransferred += SI->BytesRECV;
+	//SI->totalBytesTransferred += countActualBytes(SI->DataBuf.buf, BytesTransferred);
+	OutputDebugString(cstr);
+}

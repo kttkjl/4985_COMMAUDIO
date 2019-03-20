@@ -1,6 +1,7 @@
 #include "Client.h"
 
 struct ip_mreq stMreq;
+SOCKADDR_IN lclAddr, srcAddr;
 
 int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN * tgtAddr) {
 	int err;
@@ -144,7 +145,7 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 	return 0;
 }
 
-int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN * lclAddr)
+int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 {
 	int err;
 	if (qp->addrStr[0] == '\0') {
@@ -175,9 +176,9 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN 
 			WSAGetLastError());
 	}
 
-	lclAddr->sin_family = AF_INET;
-	lclAddr->sin_addr.s_addr = htonl(INADDR_ANY);
-	lclAddr->sin_port = htons(atoi(qp->portStr));
+	lclAddr.sin_family = AF_INET;
+	lclAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	lclAddr.sin_port = htons(atoi(qp->portStr));
 	
 	if (bind(*sock, (struct sockaddr*) &lclAddr, sizeof(lclAddr)) == SOCKET_ERROR) {
 		printf("bind() port: %s failed, Err: %d\n", qp->portStr,
@@ -196,19 +197,68 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN 
 	return 0;
 }
 
-void joiningStream(LPQueryParams qp, SOCKET * sock, SOCKADDR_IN * srcAddr) {
-	char inBuf[1024];
+void joiningStream(LPQueryParams qp, SOCKET * sock) {
+	//char inBuf[1024];
+
+	LPSOCKET_INFORMATION SI;
+	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
+		OutputDebugString("GlobalAlloc() failed\n");
+		exit(1);
+	}
+	DWORD flags = 0;
+	SI->Buffer = (char *)malloc(1024);
+	memset(SI->Buffer, 0, sizeof(SI->Buffer));
+	SI->DataBuf.buf = SI->Buffer;
+	//strcpy(SI->DataBuf.buf, fileName);
+	SI->DataBuf.len = 1024;
+	SI->Socket = *sock;
+	SI->BytesRECV = 0;
+	SI->BytesWRITTEN = 0;
+	SI->Overlapped.hEvent = SI;
+
+	// Setup Read params
+	int bytesToRead = 1024;
+	char inBuf[1024]{ 0 };
+	int chars_written = 0;
 
 	while (TRUE) {
 		int addr_size = sizeof(struct sockaddr_in);
 
-		if (recvfrom(*sock, inBuf, 1024, 0, (struct sockaddr*)&srcAddr, &addr_size) < 0) { // Error happening here
+		if (WSARecv(*sock, &(SI->DataBuf), 1, NULL, &flags, &(SI->Overlapped), clnRecvStreamCallback) == SOCKET_ERROR) { // The cmdhwnd loses focus, can't click on anything
+			MessageBox(NULL, "RECV NOT OKAY", "all not ok", MB_OK);
 			printf("recvfrom() failed, Error: %d\n", WSAGetLastError());
 			WSACleanup();
 			exit(1);
 		}
 
-		printScreen(cmdhwnd, inBuf);
+		SleepEx(INFINITE, TRUE);
+
+		// Calc
+		bytesToRead = bytesToRead - SI->BytesRECV;
+		// Save current read buffer
+		for (int i = 0; i < SI->BytesRECV; ++i) {
+			inBuf[chars_written] = SI->Buffer[i];
+			chars_written++;
+		}
+
+		if (bytesToRead == 0) {
+			OutputDebugString(SI->Buffer);
+			memset(SI->Buffer, '\0', 1024);
+			bytesToRead = 1024;
+			SI->BytesRECV = 0;
+			SI->DataBuf.len = 1024;
+			// Temp buffer reset
+			chars_written = 0;
+			memset(inBuf, '\0', 1024);
+		}
+		else {
+			// More to read, call another read again
+			SI->DataBuf.len = SI->DataBuf.len - SI->BytesRECV;
+			bytesToRead = SI->DataBuf.len;
+		}
+
+		//OutputDebugString(inBuf);
+		//printScreen(cmdhwnd, inBuf);
 	}
 
 	stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
@@ -222,4 +272,34 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, SOCKADDR_IN * srcAddr) {
 
 	/* Tell WinSock we're leaving */
 	WSACleanup();
+
+	// BACKUP COMMENTED OUT
+	//char inBuf[1024];
+
+	//while (TRUE) {
+	//	int addr_size = sizeof(struct sockaddr_in);
+
+	//	if (recvfrom(*sock, inBuf, 1024, 0, (struct sockaddr*)&srcAddr, &addr_size) < 0) { // The cmdhwnd loses focus, can't click on anything
+
+	//		MessageBox(NULL, "pressed cancel", "all not ok", MB_OK);
+	//		printf("recvfrom() failed, Error: %d\n", WSAGetLastError());
+	//		WSACleanup();
+	//		exit(1);
+	//	}
+
+	//	OutputDebugString(inBuf);
+	//	//printScreen(cmdhwnd, inBuf);
+	//}
+
+	//stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
+	//stMreq.imr_interface.s_addr = INADDR_ANY;
+	//if (setsockopt(*sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
+	//	printf("setsockopt() IP_DROP_MEMBERSHIP address %s failed, Err: %d\n",
+	//		qp->addrStr, WSAGetLastError());
+	//}
+
+	//closesocket(*sock);
+
+	///* Tell WinSock we're leaving */
+	//WSACleanup();
 }

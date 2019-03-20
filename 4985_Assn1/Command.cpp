@@ -473,7 +473,7 @@ int setupUDPSrv() {
 	}
 
 	// Join multicast group part
-	struct ip_mreq stMreq; // relocate to global
+	struct ip_mreq stMreq; // relocate to global?
 	stMreq.imr_multiaddr.s_addr = inet_addr(serverUDPParams.addrStr);
 	stMreq.imr_interface.s_addr = INADDR_ANY;
 
@@ -485,6 +485,13 @@ int setupUDPSrv() {
 	lTTL = 1; // default
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_MULTICAST_TTL, (char *)&lTTL, sizeof(lTTL)) == SOCKET_ERROR) {
 		printf("setsockopt() IP_MULTICAST_TTL failed, Err: %d\n",
+			WSAGetLastError());
+	}
+
+	// doesn't send to itself
+	BOOL fFlag = FALSE;
+	if (setsockopt(ListenSocket, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&fFlag, sizeof(fFlag)) == SOCKET_ERROR) {
+		printf("setsockopt() IP_MULTICAST_LOOP failed, Err: %d\n",
 			WSAGetLastError());
 	}
 
@@ -519,7 +526,7 @@ int setupUDPSrv() {
 --			Exits the entire program if any of the process in setting up is unsuccessful
 ----------------------------------------------------------------------------------------------------------------------*/
 int runUdpLoop(SOCKET Listen, bool upload) {
-	char test[128]{ "#TSMWIN" };
+	char test[128]{ "#TSMWIN\n" };
 	char buf[128]{ "message sent" };
 
 	while (TRUE) {
@@ -691,9 +698,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 		case ID_CLN_JOINSTREAM:
 			clearInputs(&clientUDPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_JOINBROADCAST), hwnd, HandleClnJoin);
-			if (setupUDPCln(&clientUDPParams, &ClientSocket, &WSAData, &clientUDP) == 0) {
+			if (setupUDPCln(&clientUDPParams, &ClientSocket, &WSAData) == 0) {
 				OutputDebugString("ID_CLN_JOINSTREAM\n");
-				joiningStream(&clientUDPParams, &ClientSocket, &serverUDP);
+				joiningStream(&clientUDPParams, &ClientSocket);
 			}
 			break;
 		}
