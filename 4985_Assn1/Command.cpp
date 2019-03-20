@@ -62,7 +62,7 @@
 #define MAX_ACCEPT_CLIENTS 12
 
 static TCHAR CmdModName[] = TEXT("TCP/UDP Receiver");
-HWND cmdhwnd; // Window handler for main window
+//HWND cmdhwnd; // Window handler for main window
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
@@ -73,7 +73,7 @@ char queryPortStr[INPUT_MAX_CHAR]{ '\0' };
 char queryPacketSizeStr[INPUT_MAX_CHAR]{ '\0' };
 QueryParams serverTCPParams;
 QueryParams serverUDPParams;
-QueryParams serverMulticastParams;
+QueryParams clientUDPParams;
 QueryParams clientTgtParams;
 
 // Packet size
@@ -85,7 +85,7 @@ void FreeSocketInformation(DWORD Event);
 
 // Custom functions
 void runTcpLoop(SOCKET s, bool upload);
-void runUdpLoop(SOCKET s, bool upload);
+int runUdpLoop(SOCKET s, bool upload);
 
 // Thread functions
 DWORD WINAPI runTCPthread(LPVOID upload);
@@ -108,7 +108,7 @@ WSADATA				WSAData;
 // Resuable by both client and server
 SOCKADDR_IN			serverTCP;
 SOCKADDR_IN			serverUDP;
-SOCKADDR_IN			serverMultiCast;
+SOCKADDR_IN			clientUDP;
 
 // Print event
 HANDLE	print_evt;
@@ -143,6 +143,8 @@ char inputTextBuffer[INPUT_MAX_CHAR];
 TEXTMETRIC tm;
 int xPosition;
 int yPosition;
+
+u_long lTTL;
 
 
 /*------------------------------------------------------------------------------------------------------------------
@@ -187,6 +189,7 @@ int setupTCPSrv() {
 
 	//CreateSocketInformation(ListenSocket);
 
+	// Bind socket
 	serverTCP.sin_family = AF_INET;
 	serverTCP.sin_addr.s_addr = htonl(INADDR_ANY);
 	serverTCP.sin_port = htons(atoi(serverTCPParams.portStr));
@@ -195,6 +198,8 @@ int setupTCPSrv() {
 		printf("bind() failed with error %d\n", WSAGetLastError());
 		return (601);
 	}
+
+
 	return 0;
 }
 
@@ -428,9 +433,18 @@ void printDword(DWORD word) {
 int setupUDPSrv() {
 	int err;
 	if (serverUDPParams.portStr[0] == '\0') {
+		OutputDebugString("UDP port error");
 		return 2;
 	}
+
+	// check address
+	if (serverUDPParams.addrStr[0] == '\0') {
+		OutputDebugString("UDP addr error");
+		return 4;
+	}
+
 	if (serverUDPParams.packetSizeStr[0] == '\0') {
+		OutputDebugString("UDP packet size error");
 		return 3;
 	}
 	// Startup
@@ -446,9 +460,10 @@ int setupUDPSrv() {
 
 	//CreateSocketInformation(ListenSocket);
 
+	// Bind the socket
 	serverUDP.sin_family = AF_INET;
 	serverUDP.sin_addr.s_addr = htonl(INADDR_ANY);
-	serverUDP.sin_port = htons(atoi(serverUDPParams.portStr));
+	serverUDP.sin_port = 0; // set to 0 for any port?
 
 	// Bind Listen socket to Internet Addr, basically let system auto-config
 	if (bind(ListenSocket, (PSOCKADDR)&serverUDP, sizeof(serverUDP)) == SOCKET_ERROR)
@@ -456,6 +471,26 @@ int setupUDPSrv() {
 		printf("bind() failed with error %d\n", WSAGetLastError());
 		return (601);
 	}
+
+	// Join multicast group part
+	struct ip_mreq stMreq; // relocate to global
+	stMreq.imr_multiaddr.s_addr = inet_addr(serverUDPParams.addrStr);
+	stMreq.imr_interface.s_addr = INADDR_ANY;
+
+	if (setsockopt(ListenSocket, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
+		printf("setsockopt() IP_ADD_MEMBERSHIP address %s failed, Err: %d\n",
+			serverUDPParams.addrStr, WSAGetLastError());
+	}
+
+	lTTL = 1; // default
+	if (setsockopt(ListenSocket, IPPROTO_IP, IP_MULTICAST_TTL, (char *)&lTTL, sizeof(lTTL)) == SOCKET_ERROR) {
+		printf("setsockopt() IP_MULTICAST_TTL failed, Err: %d\n",
+			WSAGetLastError());
+	}
+
+	clientUDP.sin_family = AF_INET;
+	clientUDP.sin_addr.s_addr = inet_addr(serverUDPParams.addrStr);
+	clientUDP.sin_port = htons(atoi(serverUDPParams.portStr));
 
 	return 0;
 }
@@ -483,141 +518,31 @@ int setupUDPSrv() {
 --			ends, only 1 client allowed at any given moment.
 --			Exits the entire program if any of the process in setting up is unsuccessful
 ----------------------------------------------------------------------------------------------------------------------*/
-void runUdpLoop(SOCKET Listen, bool upload) {
-	if (WSAEventSelect(Listen, EventArray[EventTotal - 1], FD_READ | FD_CLOSE) == SOCKET_ERROR)
-	{
-		printf("WSAEventSelect() failed with error %d\n", WSAGetLastError());
-		return;
-	}
+int runUdpLoop(SOCKET Listen, bool upload) {
+	char test[128]{ "#TSMWIN" };
+	char buf[128]{ "message sent" };
 
-	// Variables
-	std::ofstream out_file;
-
-	bool in_progress = false;
-	unsigned long totalTimeout = TOTAL_TIMEOUT;
-
-	// Main loop: wait for multiple events
-	while (TRUE)
-	{
-		// Wait for the overlapped I/O call to complete - forever when initial wait
-		if (in_progress) {
-			if ((Event = WSAWaitForMultipleEvents(1, EventArray, FALSE, TOTAL_TIMEOUT, FALSE)) == WSA_WAIT_TIMEOUT)
-			{
-				printf("WSAWaitForMultipleEvents(in_prog) timed out");
-				return;
-			}
+	while (TRUE) {
+		if (sendto(Listen, (char *)&test, sizeof(test), 0, (struct sockaddr*)&clientUDP, sizeof(clientUDP)) < 0) {
+			printf("sendto() failed, Error: %d\n", WSAGetLastError());
+			return 1;
 		}
 		else {
-			if ((Event = WSAWaitForMultipleEvents(1, EventArray, FALSE, WSA_INFINITE, FALSE)) == WSA_WAIT_FAILED)
-			{
-				printf("WSAWaitForMultipleEvents(init) failed with error %d\n", WSAGetLastError());
-				return;
-			}
+			char r[1]{ '\r' };
+			printScreen(cmdhwnd, buf);
+			printScreen(cmdhwnd, r);
 		}
 
-		if (WSAEnumNetworkEvents(SocketArray[Event - WSA_WAIT_EVENT_0]->Socket, EventArray[Event - WSA_WAIT_EVENT_0], &NetworkEvents) == SOCKET_ERROR)
-		{
-			printf("WSAEnumNetworkEvents failed with error %d\n", WSAGetLastError());
-			return;
-		}
+		/* Wait for the specified interval */
+		Sleep(10 * 1000);
+	}
+	closesocket(Listen);
 
-		// Upload file option selected: not init'd yet
-		if (upload && !in_progress) {
-			// Unique filename
-			char buff[20];
-			auto time = std::chrono::system_clock::now();
-			std::time_t time_c = std::chrono::system_clock::to_time_t(time);
-			auto time_tm = *std::localtime(&time_c);
-			strftime(buff, sizeof(buff), "%F-%H%M%S", &time_tm);
-			std::string fileName = buff;
-			out_file.open(fileName + ".txt");
-		}
+	/* Tell WinSock we're leaving */
+	WSACleanup();
 
-		// If first packet ever from UDP read, init it
-		if (!in_progress) {
-			// Start timing this transaction
-			start = std::chrono::high_resolution_clock::now();
-			in_progress = true;
-		}
-
-		// Try to read and write data to and from the data buffer if read and write events occur.
-		if (NetworkEvents.lNetworkEvents & FD_READ || NetworkEvents.lNetworkEvents & FD_WRITE)
-		{
-			if (NetworkEvents.lNetworkEvents & FD_READ &&
-				NetworkEvents.iErrorCode[FD_READ_BIT] != 0)
-			{
-				printf("FD_READ failed with error %d\n", NetworkEvents.iErrorCode[FD_READ_BIT]);
-				break;
-			}
-
-			if (NetworkEvents.lNetworkEvents & FD_WRITE &&
-				NetworkEvents.iErrorCode[FD_WRITE_BIT] != 0)
-			{
-				printf("FD_WRITE failed with error %d\n", NetworkEvents.iErrorCode[FD_WRITE_BIT]);
-				break;
-			}
-
-			LPSOCKET_INFORMATION SocketInfo = SocketArray[Event - WSA_WAIT_EVENT_0];
-
-			// Read data only if the receive buffer is empty.
-			if (SocketInfo->BytesRECV == 0)
-			{
-				SocketInfo->DataBuf.buf = SocketInfo->Buffer;
-				SocketInfo->DataBuf.len = atoi(queryPacketSizeStr);
-				Flags = 0;
-				// &(SocketInfo->DataBuf), param expects a pointer to an array of WSABUF structures.
-				// 1 on param 3 is because there's only 1 WSABUF struct passed in param 2
-				if (WSARecv(SocketInfo->Socket, &(SocketInfo->DataBuf), 1, &RecvBytes, &Flags, NULL, NULL) == SOCKET_ERROR)
-				{
-					if (WSAGetLastError() != WSAEWOULDBLOCK)
-					{
-						printf("WSARecv() failed with error %d\n", WSAGetLastError());
-						FreeSocketInformation(Event - WSA_WAIT_EVENT_0);
-						return;
-					}
-				}
-				else
-				{
-					// Check if control packet for expected packet number
-					if (SocketInfo->Buffer[0] == '\5') {
-						char numPacketStr[5];
-						memcpy(numPacketStr, &SocketInfo->Buffer[1], 5);
-						expected_packets = atoi(numPacketStr);
-						continue;
-					}
-					// Check if client sent last packet
-					if (SocketInfo->Buffer[0] == '\4') {
-						end = std::chrono::high_resolution_clock::now();
-						totalTime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-
-						// Signal to print
-						SetEvent(print_evt);
-						out_file.close();
-
-						// Reset in_progress, packet_expected, BytesRECV, totalBytes
-						totalBytes = 0;
-						SocketInfo->BytesRECV = 0;
-						expected_packets = 0;
-						recv_packets = 0;
-						in_progress = false;
-						continue;
-					}
-
-					// Got stuff from buffer
-					SocketInfo->BytesRECV = RecvBytes;
-					totalBytes += countActualBytes(SocketInfo->Buffer, SocketInfo->BytesRECV);
-					++recv_packets;
-
-					// If we're in upload mode
-					if (upload) {
-						out_file << SocketInfo->Buffer;
-					}
-					// CLEAR IT
-					SocketInfo->BytesRECV = 0;
-				}
-			}
-		}
-	} // End while loop
+	return 0;
+	
 }
 
 /*------------------------------------------------------------------------------------------------------------------
@@ -747,7 +672,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			}
 			break;
 		case ID_SRV_MULTICAST:
+			clearInputs(&serverUDPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_QUERYBOX_SRV_MULTICAST), hwnd, HandleMulticastSetup);
+			if (setupUDPSrv() == 0) { // valid inputs
+				h_thread_srv = CreateThread(NULL, 0, runUDPthread, (LPVOID)false, 0, &thread_srv_id);
+				h_thread_print = CreateThread(NULL, 0, printUDPthread, (LPVOID)hwnd, 0, &thread_print_id);
+			}
 			break;
 		case ID_CLN_REQFILE:
 			clearInputs(&clientTgtParams);
@@ -759,9 +689,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			OutputDebugString("REQFILE\n");
 			break;
 		case ID_CLN_JOINSTREAM:
-			clearInputs(&clientTgtParams);
+			clearInputs(&clientUDPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_JOINBROADCAST), hwnd, HandleClnJoin);
-			OutputDebugString("ID_CLN_JOINSTREAM\n");
+			if (setupUDPCln(&clientUDPParams, &ClientSocket, &WSAData, &clientUDP) == 0) {
+				OutputDebugString("ID_CLN_JOINSTREAM\n");
+				joiningStream(&clientUDPParams, &ClientSocket, &serverUDP);
+			}
 			break;
 		}
 		break;
@@ -858,20 +791,27 @@ INT_PTR CALLBACK HandleMulticastSetup(HWND hDlg, UINT message, WPARAM wParam, LP
 	switch (message) {
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDCANCEL) {
-			MessageBox(NULL, "pressed cancel", "all not ok", MB_OK);
+			MessageBox(NULL, "Pressed cancel", "all not ok", MB_OK);
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)FALSE;
 		}
 		if (LOWORD(wParam) == IDOK) {
+			/* Get Address*/
+			err = GetDlgItemText(hDlg, IDT_MULTICAST_ADDRESS, serverUDPParams.addrStr, sizeof(serverUDPParams.addrStr));
+			if (err == 0) {
+				EndDialog(hDlg, LOWORD(wParam));
+				MessageBoxA(hDlg, MSG_INPUT_ERR_NOINPUT, LABEL_INPUT_ERR, MB_OK);
+				break;
+			}
 			/*Get Server port*/
-			err = GetDlgItemText(hDlg, IDT_MULTICAST_PORT, serverMulticastParams.portStr, sizeof(serverMulticastParams.portStr));
+			err = GetDlgItemText(hDlg, IDT_MULTICAST_PORT, serverUDPParams.portStr, sizeof(serverUDPParams.portStr));
 			if (err == 0) {
 				EndDialog(hDlg, LOWORD(wParam));
 				MessageBoxA(hDlg, MSG_INPUT_ERR_NOINPUT, LABEL_INPUT_ERR, MB_OK);
 				break;
 			}
 			/*Get Packet size*/
-			err = GetDlgItemText(hDlg, IDT_MULTICAST_PACKETSIZE, serverMulticastParams.packetSizeStr, sizeof(serverMulticastParams.packetSizeStr));
+			err = GetDlgItemText(hDlg, IDT_MULTICAST_PACKETSIZE, serverUDPParams.packetSizeStr, sizeof(serverUDPParams.packetSizeStr));
 			if (err == 0) {
 				EndDialog(hDlg, LOWORD(wParam));
 				MessageBoxA(hDlg, MSG_INPUT_ERR_NOINPUT, LABEL_INPUT_ERR, MB_OK);
@@ -959,20 +899,20 @@ INT_PTR CALLBACK HandleClnJoin(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 	switch (message) {
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDCANCEL) {
-			MessageBox(NULL, "pressed cancel", "cancelled", MB_OK);
+			MessageBox(NULL, "Pressed cancel", "cancelled", MB_OK);
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)FALSE;
 		}
 		if (LOWORD(wParam) == IDOK) {
 			/*Get Server name as a string*/
-			err = GetDlgItemText(hDlg, IDT_CLN_TGTADDR, clientTgtParams.addrStr, sizeof(clientTgtParams.addrStr));
+			err = GetDlgItemText(hDlg, IDT_CLN_TGTADDR, clientUDPParams.addrStr, sizeof(clientUDPParams.addrStr));
 			if (err == 0) {
 				EndDialog(hDlg, LOWORD(wParam));
 				MessageBoxA(hDlg, MSG_INPUT_ERR_NOINPUT, LABEL_INPUT_ERR, MB_OK);
 				break;
 			}
 			/*Get Server port*/
-			err = GetDlgItemText(hDlg, IDT_CLN_TGT_PORT, clientTgtParams.portStr, sizeof(clientTgtParams.portStr));
+			err = GetDlgItemText(hDlg, IDT_CLN_TGT_PORT, clientUDPParams.portStr, sizeof(clientUDPParams.portStr));
 			if (err == 0) {
 				EndDialog(hDlg, LOWORD(wParam));
 				MessageBoxA(hDlg, MSG_INPUT_ERR_NOINPUT, LABEL_INPUT_ERR, MB_OK);
@@ -1008,7 +948,6 @@ INT_PTR CALLBACK HandleClnJoin(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 --			Thread function to run the TCP listening server
 ----------------------------------------------------------------------------------------------------------------------*/
 DWORD WINAPI runTCPthread(LPVOID upload) {
-	// Fuck events boys, we doing completion routine: AcceptSocket here
 	while (1) {
 		// Listen
 		if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR)
@@ -1150,6 +1089,7 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 		}
 	}
 	SleepEx(INFINITE, TRUE);
+
 	char cstr[DATA_BUF_SIZE];
 	sprintf(cstr, "Total Bytes Sent'd: %d\n", SocketInfo->totalBytesTransferred);
 	OutputDebugString(cstr);
@@ -1199,10 +1139,11 @@ DWORD WINAPI printTCPthread(LPVOID hwnd) {
 --
 --    REVISIONS :
 --    		(FEB 12, 2019): Created
+--			(MAR 19, 2019): Edited to fit comm audio server
 --
---    DESIGNER : Jacky Li
+--    DESIGNER : Jacky Li, Alexander Song
 --
---    PROGRAMMER : Jacky Li
+--    PROGRAMMER : Alexander Song
 --
 --    INTERFACE : DWORD WINAPI runUDPthread(LPVOID upload)
 --			VPVOID upload:		(BOOL) Whether or not to have the listener server save the file
@@ -1215,7 +1156,10 @@ DWORD WINAPI printTCPthread(LPVOID hwnd) {
 ----------------------------------------------------------------------------------------------------------------------*/
 DWORD WINAPI runUDPthread(LPVOID upload) {
 	while (1) {
-		runUdpLoop(ListenSocket, (BOOL)upload);
+		if (runUdpLoop(ListenSocket, (BOOL)upload) == 1) {
+			OutputDebugString("runUDPthread error\n");
+			break;
+		}
 	}
 	return 200;
 }

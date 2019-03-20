@@ -1,5 +1,7 @@
 #include "Client.h"
 
+struct ip_mreq stMreq;
+
 int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN * tgtAddr) {
 	int err;
 	struct hostent *hp;
@@ -140,4 +142,84 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 	}
 
 	return 0;
+}
+
+int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN * lclAddr)
+{
+	int err;
+	if (qp->addrStr[0] == '\0') {
+		OutputDebugString("qp address error\n");
+		return 1;
+	}
+	if (qp->portStr[0] == '\0') {
+		OutputDebugString("qp port error\n");
+		return 2;
+	}
+
+	// Startup
+	if ((err = WSAStartup(0x0202, wsaData)) != 0) //No usable DLL
+	{
+		//printf("DLL not found!\n");
+		exit(err);
+	}
+
+	if ((*sock = socket(AF_INET, SOCK_DGRAM, 0)) == INVALID_SOCKET) {
+		printf("socket() failed, Err: %d\n", WSAGetLastError());
+		WSACleanup();
+		exit(1);
+	}
+
+	BOOL fFlag = TRUE;
+	if (setsockopt(*sock, SOL_SOCKET, SO_REUSEADDR, (char *)&fFlag, sizeof(fFlag) == SOCKET_ERROR)) {
+		printf("setsockopt() SO_REUSEADDR failed, Err: %d\n",
+			WSAGetLastError());
+	}
+
+	lclAddr->sin_family = AF_INET;
+	lclAddr->sin_addr.s_addr = htonl(INADDR_ANY);
+	lclAddr->sin_port = htons(atoi(qp->portStr));
+	
+	if (bind(*sock, (struct sockaddr*) &lclAddr, sizeof(lclAddr)) == SOCKET_ERROR) {
+		printf("bind() port: %s failed, Err: %d\n", qp->portStr,
+			WSAGetLastError());
+	}
+
+	stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
+	stMreq.imr_interface.s_addr = INADDR_ANY;
+
+	if (setsockopt(*sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
+		printf(
+			"setsockopt() IP_ADD_MEMBERSHIP address %s failed, Err: %d\n",
+			qp->addrStr, WSAGetLastError());
+	}
+
+	return 0;
+}
+
+void joiningStream(LPQueryParams qp, SOCKET * sock, SOCKADDR_IN * srcAddr) {
+	char inBuf[1024];
+
+	while (TRUE) {
+		int addr_size = sizeof(struct sockaddr_in);
+
+		if (recvfrom(*sock, inBuf, 1024, 0, (struct sockaddr*)&srcAddr, &addr_size) < 0) { // Error happening here
+			printf("recvfrom() failed, Error: %d\n", WSAGetLastError());
+			WSACleanup();
+			exit(1);
+		}
+
+		printScreen(cmdhwnd, inBuf);
+	}
+
+	stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
+	stMreq.imr_interface.s_addr = INADDR_ANY;
+	if (setsockopt(*sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
+		printf("setsockopt() IP_DROP_MEMBERSHIP address %s failed, Err: %d\n",
+			qp->addrStr, WSAGetLastError());
+	}
+
+	closesocket(*sock);
+
+	/* Tell WinSock we're leaving */
+	WSACleanup();
 }
