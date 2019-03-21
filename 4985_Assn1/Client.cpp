@@ -177,10 +177,8 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 
 	// Create receiver socket
 	if ((*sock = WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_OVERLAPPED)) == INVALID_SOCKET) {
-	//if (socket(AF_INET, SOCK_DGRAM, 0) == INVALID_SOCKET) {
 		printf("socket() failed, Err: %d\n", WSAGetLastError());
 		MessageBox(NULL, "WSASocket error", "all not ok", MB_OK);
-		//WSACloseEvent(SI->Overlapped.hEvent);
 		WSACleanup();
 		exit(1);
 	}
@@ -213,8 +211,7 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 	return 0;
 }
 
-void joiningStream(LPQueryParams qp, SOCKET * sock) {
-	//char inBuf[1024];
+void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd) {
 	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
 		OutputDebugString("GlobalAlloc() failed\n");
 		exit(1);
@@ -222,83 +219,40 @@ void joiningStream(LPQueryParams qp, SOCKET * sock) {
 
 	int err;
 	DWORD flags = 0;
-	SI->Buffer = (char *)malloc(1024);
+	SI->Buffer = (char *)malloc(AUD_BUF_SIZE);
 	memset(SI->Buffer, 0, sizeof(SI->Buffer));
 	SI->DataBuf.buf = SI->Buffer;
-	SI->DataBuf.len = 1024;
+	SI->DataBuf.len = AUD_BUF_SIZE;
 	SI->Socket = *sock;
 	SI->BytesRECV = 0;
 	SI->BytesWRITTEN = 0;
 	SI->Overlapped.hEvent = SI;
 
 	// Setup Read params
-	int bytesToRead = 1024;
-	char packet_buf[1024]{ 0 };
+	int bytesToRead = AUD_BUF_SIZE;
+	char packet_buf[AUD_BUF_SIZE]{ 0 };
 	int chars_written = 0;
 
 	while (TRUE) {
 		int addr_size = sizeof(struct sockaddr_in);
 
-		if (WSARecvFrom(*sock, &(SI->DataBuf), 1, NULL, &flags, (SOCKADDR *)& srcAddr, &addr_size, &SI->Overlapped, completeCallback) != 0) { // The cmdhwnd loses focus, can't click on anything
+		if (WSARecvFrom(*sock, &(SI->DataBuf), 1, NULL, &flags, (SOCKADDR *)& srcAddr, &addr_size, &SI->Overlapped, completeCallback) != 0) {
 			if (WSAGetLastError() != WSA_IO_PENDING) {
 				OutputDebugString("IO ERROR");
 
 				// Get last thing in buffer
-				char temp_buf[1024]{ 0 };
+				char temp_buf[AUD_BUF_SIZE]{ 0 };
 				memcpy(temp_buf, SI->Buffer, SI->BytesRECV);
 				char cstr[256];
 				sprintf(cstr, "Total Bytes Recv'd: %d\n", SI->totalBytesTransferred);
 				OutputDebugString(cstr);
 
-				MessageBox(NULL, "pressed cancel", "all not ok", MB_OK);
 				// Reset
 				closesocket(*sock);
 				GlobalFree(SI);
 				WSACleanup();
 				exit(1);
 			}
-		//if (WSARecvFrom(*sock, &(SI->DataBuf), 1, &(SI->BytesRECV), &flags, (SOCKADDR *) & srcAddr, &addr_size, &SI->Overlapped, NULL) != 0) { // The cmdhwnd loses focus, can't click on anything
-		//	err = WSAGetLastError();
-		//	if (err != WSA_IO_PENDING) {
-		//		MessageBox(NULL, "wsa_io_pending error", "all not ok", MB_OK);
-		//		WSACloseEvent(SI->Overlapped.hEvent);
-		//		closesocket(*sock);
-		//		WSACleanup();
-		//		exit(1);
-		//	}
-			//else {
-			//	//if (WSAWaitForMultipleEvents(1, &(SI->Overlapped.hEvent), TRUE, INFINITE, TRUE) == WSA_WAIT_FAILED) {
-			//	//	OutputDebugString("WSAWaitForMultipleEvents failed\n");
-			//	//}
-
-			//	if (WSAGetOverlappedResult(*sock, &(SI->Overlapped), &(SI->BytesRECV), FALSE, &flags) == FALSE) {
-			//		OutputDebugString("WSAoverlapped error thing\n");
-			//	}
-			//	else {
-			//		bytesToRead = bytesToRead - SI->BytesRECV;
-			//		// Save current read buffer
-			//		for (int i = 0; i < SI->BytesRECV; ++i) {
-			//			inBuf[chars_written] = SI->Buffer[i];
-			//			chars_written++;
-			//		}
-
-			//		if (bytesToRead == 0) {
-			//			OutputDebugString(SI->Buffer);
-			//			memset(SI->Buffer, '\0', 1024);
-			//			bytesToRead = 1024;
-			//			SI->BytesRECV = 0;
-			//			SI->DataBuf.len = 1024;
-			//			// Temp buffer reset
-			//			chars_written = 0;
-			//			memset(inBuf, '\0', 1024);
-			//		}
-			//		else {
-			//			// More to read, call another read again
-			//			SI->DataBuf.len = SI->DataBuf.len - SI->BytesRECV;
-			//			bytesToRead = SI->DataBuf.len;
-			//		}
-			//	}
-			//}
 		}
 
 		SleepEx(INFINITE, TRUE);
@@ -313,15 +267,15 @@ void joiningStream(LPQueryParams qp, SOCKET * sock) {
 
 		if (bytesToRead == 0) {
 			// Full packet get, Write to file
-			printScreen(cmdhwnd, packet_buf);
+			printScreen(hwnd, SI->Buffer);
 			// Reset BytesToRead and BytesRecv
-			memset(SI->Buffer, '\0', 1024);
-			bytesToRead = 1024;
+			memset(SI->Buffer, '\0', AUD_BUF_SIZE);
+			bytesToRead = AUD_BUF_SIZE;
 			SI->BytesRECV = 0;
-			SI->DataBuf.len = 1024;
+			SI->DataBuf.len = AUD_BUF_SIZE;
 			// Temp buffer reset
 			chars_written = 0;
-			memset(packet_buf, '\0', 1024);
+			memset(packet_buf, '\0', AUD_BUF_SIZE);
 		}
 		else {
 			// More to read, call another read again
@@ -329,9 +283,7 @@ void joiningStream(LPQueryParams qp, SOCKET * sock) {
 			bytesToRead = SI->DataBuf.len;
 		}
 
-		//OutputDebugString(inBuf);
-		//printScreen(cmdhwnd, inBuf);
-	}
+	} // infinite loop
 
 	stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
 	stMreq.imr_interface.s_addr = INADDR_ANY;
@@ -339,39 +291,9 @@ void joiningStream(LPQueryParams qp, SOCKET * sock) {
 		printf("setsockopt() IP_DROP_MEMBERSHIP address %s failed, Err: %d\n",
 			qp->addrStr, WSAGetLastError());
 	}
-	//WSACloseEvent(SI->Overlapped.hEvent);
+
 	closesocket(*sock);
 
 	/* Tell WinSock we're leaving */
 	WSACleanup();
-
-	// BACKUP COMMENTED OUT
-	//char inBuf[1024];
-
-	//while (TRUE) {
-	//	int addr_size = sizeof(struct sockaddr_in);
-
-	//	if (recvfrom(*sock, inBuf, 1024, 0, (struct sockaddr*)&srcAddr, &addr_size) < 0) { // The cmdhwnd loses focus, can't click on anything
-
-	//		MessageBox(NULL, "pressed cancel", "all not ok", MB_OK);
-	//		printf("recvfrom() failed, Error: %d\n", WSAGetLastError());
-	//		WSACleanup();
-	//		exit(1);
-	//	}
-
-	//	OutputDebugString(inBuf);
-	//	//printScreen(cmdhwnd, inBuf);
-	//}
-
-	//stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
-	//stMreq.imr_interface.s_addr = INADDR_ANY;
-	//if (setsockopt(*sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
-	//	printf("setsockopt() IP_DROP_MEMBERSHIP address %s failed, Err: %d\n",
-	//		qp->addrStr, WSAGetLastError());
-	//}
-
-	//closesocket(*sock);
-
-	///* Tell WinSock we're leaving */
-	//WSACleanup();
 }

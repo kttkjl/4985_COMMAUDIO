@@ -66,11 +66,10 @@ void CALLBACK completeCallback(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPP
 	}
 
 	// Print stats
-	char cstr[1024];
+	char cstr[AUD_BUF_SIZE];
 	SI->BytesRECV = countActualBytes(SI->DataBuf.buf, cbTransferred);
 	sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
 	SI->totalBytesTransferred += SI->BytesRECV;
 	OutputDebugString(SI->Buffer);
-	OutputDebugString("\n");
 	OutputDebugString(cstr);
 }

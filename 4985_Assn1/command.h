@@ -20,8 +20,6 @@
 #include "Callbacks.h"
 #include "QueryParams.h"
 
-static HWND cmdhwnd;
-
 void printScreen(HWND hwnd, char *buffer);
 void wipeScreen(HWND hwnd);
 

@@ -93,6 +93,7 @@ DWORD WINAPI printTCPthread(LPVOID hwnd);
 DWORD WINAPI runUDPthread(LPVOID upload);
 DWORD WINAPI printUDPthread(LPVOID hwnd);
 DWORD WINAPI runAcceptThread(LPVOID acceptSocket);
+DWORD WINAPI runUDPRecvthread(LPVOID recv);
 
 DWORD EventTotal = 0;
 WSAEVENT				EventArray[WSA_MAXIMUM_WAIT_EVENTS];
@@ -145,7 +146,7 @@ int xPosition;
 int yPosition;
 
 u_long lTTL;
-
+HWND cmdhwnd;
 
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupTCPSrv
@@ -412,14 +413,14 @@ void printDword(DWORD word) {
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupUDPSrv
 --
---    DATE : FEB 08, 2019
+--    DATE : MAR 18, 2019
 --
 --    REVISIONS :
---    		(FEB 08, 2019): Created
+--    		(MAR 18, 2019): Created
 --
---    DESIGNER : Jacky Li
+--    DESIGNER : Alexander Song
 --
---    PROGRAMMER : Jacky Li
+--    PROGRAMMER : Alexander Song
 --
 --    INTERFACE : int setupUDPSrv()
 --
@@ -432,6 +433,7 @@ void printDword(DWORD word) {
 ----------------------------------------------------------------------------------------------------------------------*/
 int setupUDPSrv() {
 	int err;
+	// Check port
 	if (serverUDPParams.portStr[0] == '\0') {
 		OutputDebugString("UDP port error");
 		return 2;
@@ -443,6 +445,7 @@ int setupUDPSrv() {
 		return 4;
 	}
 
+	// Check packet size
 	if (serverUDPParams.packetSizeStr[0] == '\0') {
 		OutputDebugString("UDP packet size error");
 		return 3;
@@ -458,12 +461,10 @@ int setupUDPSrv() {
 		exit(600);
 	}
 
-	//CreateSocketInformation(ListenSocket);
-
 	// Bind the socket
 	serverUDP.sin_family = AF_INET;
 	serverUDP.sin_addr.s_addr = htonl(INADDR_ANY);
-	serverUDP.sin_port = 0; // set to 0 for any port?
+	serverUDP.sin_port = 0;
 
 	// Bind Listen socket to Internet Addr, basically let system auto-config
 	if (bind(ListenSocket, (PSOCKADDR)&serverUDP, sizeof(serverUDP)) == SOCKET_ERROR)
@@ -482,13 +483,13 @@ int setupUDPSrv() {
 			serverUDPParams.addrStr, WSAGetLastError());
 	}
 
-	lTTL = 1; // default
+	lTTL = 1; // default time to live
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_MULTICAST_TTL, (char *)&lTTL, sizeof(lTTL)) == SOCKET_ERROR) {
 		printf("setsockopt() IP_MULTICAST_TTL failed, Err: %d\n",
 			WSAGetLastError());
 	}
 
-	// doesn't send to itself
+	// Doesn't send to itself in the multicast
 	BOOL fFlag = FALSE;
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&fFlag, sizeof(fFlag)) == SOCKET_ERROR) {
 		printf("setsockopt() IP_MULTICAST_LOOP failed, Err: %d\n",
@@ -505,14 +506,14 @@ int setupUDPSrv() {
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: runUdpLoop
 --
---    DATE : FEB 08, 2019
+--    DATE : MAR 18, 2019
 --
 --    REVISIONS :
---    		(FEB 08, 2019): Created
+--    		(MAR 18, 2019): Created
 --
---    DESIGNER : Jacky Li
+--    DESIGNER : Alexander Song
 --
---    PROGRAMMER : Jacky Li
+--    PROGRAMMER : Alexander Song
 --
 --    INTERFACE : void runUdpLoop(SOCKET Listen, bool upload)
 --			SOCKET Listen:		The socket which this function will setup and listen on
@@ -526,12 +527,41 @@ int setupUDPSrv() {
 --			Exits the entire program if any of the process in setting up is unsuccessful
 ----------------------------------------------------------------------------------------------------------------------*/
 int runUdpLoop(SOCKET Listen, bool upload) {
+	// Socket info setup
+	LPSOCKET_INFORMATION SI;
+	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
+		OutputDebugString("GlobalAlloc() failed\n");
+		return 599;
+	}
+
+	DWORD Flags = 0;
+	int counter = 0;
 	char test[128]{ "#TSMWIN\n" };
+	char test2[128]{ "hi there\n" };
+	char test3[128]{ "go wawyasdsfs\n" };
+	char * testArr[3] = { test, test2, test3 };
 	char buf[128]{ "message sent" };
+	int addr_size = sizeof(struct sockaddr_in);
+	SI->DataBuf.len = 128;
 
 	while (TRUE) {
-		if (sendto(Listen, (char *)&test, sizeof(test), 0, (struct sockaddr*)&clientUDP, sizeof(clientUDP)) < 0) {
-			printf("sendto() failed, Error: %d\n", WSAGetLastError());
+		// Send diff message setup
+		switch (counter % 3) {
+		case 1:
+			SI->DataBuf.buf = testArr[0];
+			counter++;
+			break;
+		case 2:
+			SI->DataBuf.buf = testArr[1];
+			counter++;
+			break;
+		default:
+			SI->DataBuf.buf = testArr[2];
+			counter++;
+			break;
+		}
+		if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *) & clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
+			printf("WSASendTo() failed, Error: %d\n", WSAGetLastError());
 			return 1;
 		}
 		else {
@@ -547,7 +577,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 	/* Tell WinSock we're leaving */
 	WSACleanup();
-
+	GlobalFree(SI);
 	return 0;
 	
 }
@@ -700,7 +730,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_JOINBROADCAST), hwnd, HandleClnJoin);
 			if (setupUDPCln(&clientUDPParams, &ClientSocket, &WSAData) == 0) {
 				OutputDebugString("ID_CLN_JOINSTREAM\n");
-				joiningStream(&clientUDPParams, &ClientSocket);
+				h_thread_accept = CreateThread(NULL, 0, runUDPRecvthread, (LPVOID)cmdhwnd, 0, NULL);
 			}
 			break;
 		}
@@ -1168,6 +1198,11 @@ DWORD WINAPI runUDPthread(LPVOID upload) {
 			break;
 		}
 	}
+	return 200;
+}
+
+DWORD WINAPI runUDPRecvthread(LPVOID recv) {
+	joiningStream(&clientUDPParams, &ClientSocket, (HWND) recv);
 	return 200;
 }
 
