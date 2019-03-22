@@ -43,7 +43,6 @@ int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN 
 }
 
 int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) {
-	LPSOCKET_INFORMATION SI;
 	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
 		OutputDebugString("GlobalAlloc() failed\n");
 		return 1;
@@ -146,6 +145,30 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 	return 0;
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: runUdpLoop
+--
+--    DATE : MAR 19, 2019
+--
+--    REVISIONS :
+--    		(MAR 19, 2019): Created
+--
+--    DESIGNER : Alexander Song
+--
+--    PROGRAMMER : Alexander Song
+--
+--    INTERFACE : int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
+--			LPQueryParams qp:		A special struct that holds the inputted params submitted by user
+--			SOCKET * sock:			The socket to receive data packets
+--			WSADATA * wsaData:		Structure to contain the socket's information
+--
+--    RETURNS : void
+--
+--    NOTES :
+--			Runs the loop to listen onto the UDP port specified by the windows GUI, continues to run until program
+--			ends, only 1 client allowed at any given moment.
+--			Exits the entire program if any of the process in setting up is unsuccessful
+----------------------------------------------------------------------------------------------------------------------*/
 int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 {
 	int err;
@@ -164,16 +187,6 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 		//printf("DLL not found!\n");
 		exit(err);
 	}
-
-	// Make sure the Overlapped struct is zeroed out
-	//ZeroMemory(&(SI->Overlapped), sizeof(WSAOVERLAPPED));
-
-	/*SI->Overlapped.hEvent = WSACreateEvent();
-	if (SI->Overlapped.hEvent == NULL) {
-		wprintf(L"WSACreateEvent failed with error: %d\n", WSAGetLastError());
-		WSACleanup();
-		return 1;
-	}*/
 
 	// Create receiver socket
 	if ((*sock = WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_OVERLAPPED)) == INVALID_SOCKET) {

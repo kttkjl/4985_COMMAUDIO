@@ -571,7 +571,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 		}
 
 		/* Wait for the specified interval */
-		Sleep(10 * 1000);
+		Sleep(1000 * 3);
 	}
 	closesocket(Listen);
 
