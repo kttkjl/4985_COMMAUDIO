@@ -5,7 +5,7 @@
 	--					(3) Packets received/Packets expected if on UDP
 	--					(4) Save the incoming data if the user chooses to do so into a .txt file
 	--	
-	--	PROGRAM :	4985_Assn2GUISrv.exe
+	--	PROGRAM :	4985_COMMAUDIO.exe
 	--	
 	--	FUNCTIONS :
 	--	
@@ -33,21 +33,14 @@
 	--	
 	--		INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 	--	
-	--	DATE: FEB 12, 2019
+	--	DATE: MAR 10, 2019
 	--	
 	--	REVISIONS : 
-	--			FEB 12, 2019: Comments
-	--			FEB 11, 2018: Thread function for print
-	--			FEB 10, 2019: UDP implemented - packets
-	--			FEB 09, 2019: UDP implemented - file
-	--			FEB 08, 2019: TCP implemented - packets, tested
-	--			FEB 06, 2019: Interactions with menu items, TCP implemented - file, tested
-	--			FEB 04, 2019: Created Menu items
-	--			FEB 02, 2019: Created
+	--			MAR 10, 2019: Created
 	--	
-	--	DESIGNER : Jacky LI
+	--	DESIGNER : Jacky Li, Alexander Song, Simon Chen
 	--	
-	--	PROGRAMMER : Jacky Li
+	--	PROGRAMMER : Jacky Li, Alexander Song
 	--	
 	--	NOTES :
 	--		The program will listen on sockets using TCP/UDP protocol, and collect statistics on the transaction
@@ -429,7 +422,7 @@ void printDword(DWORD word) {
 --
 --    NOTES :
 --			Sets up all the global variables this program needs to make it ready to accept connections from a socket,
---			using the UDP protocol
+--			using the UDP protocol for a multicast server
 ----------------------------------------------------------------------------------------------------------------------*/
 int setupUDPSrv() {
 	int err;
@@ -523,7 +516,7 @@ int setupUDPSrv() {
 --
 --    NOTES :
 --			Runs the loop to listen onto the UDP port specified by the windows GUI, continues to run until program
---			ends, only 1 client allowed at any given moment.
+--			ends.
 --			Exits the entire program if any of the process in setting up is unsuccessful
 ----------------------------------------------------------------------------------------------------------------------*/
 int runUdpLoop(SOCKET Listen, bool upload) {
@@ -823,6 +816,34 @@ INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARA
 	return (INT_PTR)FALSE;
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: HandleMulticastSrvSetup
+--
+--    DATE : MAR 17, 2019
+--
+--    REVISIONS :
+--    		(MAR 17, 2019): Created
+--
+--    DESIGNER : Jacky Li, Alexander Song
+--
+--    PROGRAMMER : Alexander Song
+--
+--    INTERFACE : INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+--			HANDLE hDlg:		DialogBox handle
+--			UINT message		WM to trigger when DialogBox is terminated
+--			WPARAM wParam		Additional message-specific information.
+--			LPARAM lParam		Additional message-specific information.
+--
+--    RETURNS : INT_PTR
+--			Typically, the dialog box procedure should return TRUE if it processed the message, and FALSE if it did not.
+--			If the dialog box procedure returns FALSE, the dialog manager performs the default dialog operation in
+--			response to the message.
+--
+--    NOTES :
+--			Handles user input as a query, once user has inputted, a custom window message will be signalled
+--			The user input will be saved to a global query buffer, then will be processed
+--			This is a custom DialogProc function
+----------------------------------------------------------------------------------------------------------------------*/
 INT_PTR CALLBACK HandleMulticastSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	unsigned int err = 0;
 	switch (message) {
@@ -930,6 +951,34 @@ INT_PTR CALLBACK HandleClnQuery(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 	return (INT_PTR)FALSE;
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: HandleClnJoin
+--
+--    DATE : JAN 17, 2019
+--
+--    REVISIONS :
+--    		(JAN 17, 2019): Created
+--
+--    DESIGNER : Jacky Li
+--
+--    PROGRAMMER : Jacky Li
+--
+--    INTERFACE : INT_PTR CALLBACK HandleClnJoin(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+--			HANDLE hDlg:		DialogBox handle
+--			UINT message		WM to trigger when DialogBox is terminated
+--			WPARAM wParam		Additional message-specific information.
+--			LPARAM lParam		Additional message-specific information.
+--
+--    RETURNS : INT_PTR
+--			Typically, the dialog box procedure should return TRUE if it processed the message, and FALSE if it did not.
+--			If the dialog box procedure returns FALSE, the dialog manager performs the default dialog operation in
+--			response to the message.
+--
+--    NOTES :
+--			Handles user input as a query, once user has inputted, a custom window message will be signalled
+--			The user input will be saved to a global query buffer, then will be processed
+--			This is a custom DialogProc function
+----------------------------------------------------------------------------------------------------------------------*/
 INT_PTR CALLBACK HandleClnJoin(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	// Init error variable
 	unsigned int err = 0;
@@ -1183,7 +1232,7 @@ DWORD WINAPI printTCPthread(LPVOID hwnd) {
 --    PROGRAMMER : Alexander Song
 --
 --    INTERFACE : DWORD WINAPI runUDPthread(LPVOID upload)
---			VPVOID upload:		(BOOL) Whether or not to have the listener server save the file
+--			LPVOID upload:		(BOOL) Whether or not to have the listener server save the file
 --
 --    RETURNS : DWORD
 --			200 on completion

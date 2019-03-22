@@ -55,7 +55,30 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 	OutputDebugString(cstr);
 }
 
-// For when client gets file sent to it
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: completeCallback
+--
+--    DATE : MAR 17, 2019
+--
+--    REVISIONS :
+--    		(MAR 17, 2019): Created
+--
+--    DESIGNER : Jacky Li, Alexander Song
+--
+--    PROGRAMMER : Alexander Song
+--
+--    INTERFACE : void CALLBACK completeCallback(DWORD dwError, DWORD cbTransferred, 
+--						LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags)
+--			DWORD dwError:						
+--			DWORD cbTransferred:				
+--			LPWSAOVERLAPPED lpOverlapped:		
+--			DWORD dwFlags:						
+--
+--    RETURNS : void CALLBACK
+--
+--    NOTES :
+--			Callback function that is used for the completion routine of WSARecvFrom
+----------------------------------------------------------------------------------------------------------------------*/
 void CALLBACK completeCallback(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags) {
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(lpOverlapped->hEvent);
 	if (dwError != 0 || cbTransferred == 0)
