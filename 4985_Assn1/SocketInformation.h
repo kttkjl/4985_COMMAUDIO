@@ -3,6 +3,7 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
 #define DATA_BUF_SIZE 8192
+#define AUD_BUF_SIZE 8192
 #include <winsock2.h>
 #include <windows.h>
 

@@ -14,6 +14,7 @@
 #define IDT_CLN_TGT_PORT                1058
 #define IDT_MULTICAST_PORT				1059
 #define IDT_MULTICAST_PACKETSIZE		1060
+#define IDT_MULTICAST_ADDRESS			1061
 #define IDT_PORT                        5001
 #define IDD_PACKETSIZE                  5002
 #define IDD_CLN_JOINBROADCAST           20000
