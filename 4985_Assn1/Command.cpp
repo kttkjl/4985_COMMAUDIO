@@ -434,6 +434,8 @@ int setupUDPSrv() {
 
 	// check address
 	if (serverUDPParams.addrStr[0] == '\0') {
+		u_long tmpAddr = inet_addr(serverUDPParams.addrStr[0]);
+		if (tmp)
 		OutputDebugString("UDP addr error");
 		return 4;
 	}
