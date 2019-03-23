@@ -222,7 +222,8 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 		printf(
 			"setsockopt() IP_ADD_MEMBERSHIP address %s failed, Err: %d\n",
 			qp->addrStr, WSAGetLastError());
-		return WSAGetLastError();
+		OutputDebugString("setsockopt() IP_ADD_MEMBERSHIP address\n");
+		return 800;
 	}
 
 	return 0;

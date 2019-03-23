@@ -434,11 +434,19 @@ int setupUDPSrv() {
 
 	// check address
 	if (serverUDPParams.addrStr[0] == '\0') {
-		u_long tmpAddr = inet_addr(serverUDPParams.addrStr[0]);
-		if (tmp)
 		OutputDebugString("UDP addr error");
 		return 4;
 	}
+
+	// This check doesn't work lol
+	/*OutputDebugString("Checking multicast address\n");
+	u_long tmpAddr = inet_addr(serverUDPParams.addrStr);
+	OutputDebugString(serverUDPParams.addrStr);
+	if (!((tmpAddr >= 0xe0000000) || (tmpAddr <= 0xefffffff))) {
+		OutputDebugString("UDP addr error");
+		return 4;
+	}
+	OutputDebugString("multicast address correct\n");*/
 
 	// Check packet size
 	if (serverUDPParams.packetSizeStr[0] == '\0') {
@@ -476,6 +484,8 @@ int setupUDPSrv() {
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
 		printf("setsockopt() IP_ADD_MEMBERSHIP address %s failed, Err: %d\n",
 			serverUDPParams.addrStr, WSAGetLastError());
+		OutputDebugString("setsockopt() IP_ADD_MEMBERSHIP address\n");
+		return 800;
 	}
 
 	lTTL = 1; // default time to live
@@ -560,6 +570,9 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 			return 1;
 		}
 		else {
+			if (counter % 3 == 1) {
+				wipeScreen(cmdhwnd);
+			}
 			char r[1]{ '\r' };
 			printScreen(cmdhwnd, buf);
 			printScreen(cmdhwnd, r);
@@ -623,11 +636,12 @@ void printScreen(HWND hwnd, char *buffer) {
 --    DATE : JAN 17, 2019
 --
 --    REVISIONS :
+--			(MAR 23, 2019): Slight modification
 --    		(JAN 17, 2019): Created
 --
 --    DESIGNER : Jacky Li
 --
---    PROGRAMMER : Jacky Li
+--    PROGRAMMER : Jacky Li, Alexander Song
 --
 --    INTERFACE : void wipeScreen(HWND hwnd)
 --			HANDLE hwnd:		HANDLE to the window to be wiped
@@ -641,8 +655,8 @@ void wipeScreen(HWND hwnd) {
 	xPosition = 0;
 	yPosition = 0;
 	HDC textScreen = GetDC(hwnd);
-	HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0));
-	Rectangle(textScreen, 1, 1, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
+	//HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0));
+	Rectangle(textScreen, -1, -1, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
 }
 
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
