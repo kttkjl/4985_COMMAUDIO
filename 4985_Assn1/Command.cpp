@@ -17,19 +17,14 @@
 	--	
 	--		void wipeScreen(HWND hwnd);
 	--		
-	--		void runTcpLoop(SOCKET s, bool upload);
-	--		
 	--		void runUdpLoop(SOCKET s, bool upload);
 	--		
 	--		int countActualBytes(char * buf, int len);
 	--	
 	--		DWORD WINAPI runTCPthread(LPVOID upload);
 	--		
-	--		DWORD WINAPI printTCPthread(LPVOID hwnd);
-	--		
 	--		DWORD WINAPI runUDPthread(LPVOID upload);
 	--		
-	--		DWORD WINAPI printUDPthread(LPVOID hwnd);
 	--	
 	--		INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 	--	
@@ -56,7 +51,7 @@
 #define PACKET_SIZE 8192
 
 static TCHAR CmdModName[] = TEXT("TCP/UDP Receiver");
-//HWND cmdhwnd; // Window handler for main window
+HWND cmdhwnd; // Window handler for main window
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
@@ -74,18 +69,13 @@ QueryParams clientTgtParams;
 char * sbuf;
 int buflen;
 
-BOOL CreateSocketInformation(SOCKET s);
-void FreeSocketInformation(DWORD Event);
-
 // Custom functions
-void runTcpLoop(SOCKET s, bool upload);
 int runUdpLoop(SOCKET s, bool upload);
 
 // Thread functions
 DWORD WINAPI runTCPthread(LPVOID upload);
 DWORD WINAPI printTCPthread(LPVOID hwnd);
 DWORD WINAPI runUDPthread(LPVOID upload);
-DWORD WINAPI printUDPthread(LPVOID hwnd);
 DWORD WINAPI runAcceptThread(LPVOID acceptSocket);
 DWORD WINAPI runUDPRecvthread(LPVOID recv);
 
@@ -94,8 +84,6 @@ WSAEVENT				EventArray[WSA_MAXIMUM_WAIT_EVENTS];
 LPSOCKET_INFORMATION	SocketArray[WSA_MAXIMUM_WAIT_EVENTS];
 
 // WSA Events, only need write_event for now
-WSANETWORKEVENTS	NetworkEvents;
-DWORD				Event;
 SOCKET				ListenSocket;
 SOCKET				AcceptSocket;
 SOCKET				ClientSocket;
@@ -106,15 +94,12 @@ SOCKADDR_IN			serverUDP;
 SOCKADDR_IN			clientUDP;
 
 // Print event
-HANDLE	print_evt;
 DWORD	thread_srv_id;
-DWORD	thread_print_id;
 
 DWORD	acceptedClients[MAX_ACCEPT_CLIENTS];
 DWORD	thread_accept_id; //Throw this into array for multiple clients
 
 HANDLE	h_thread_srv;
-HANDLE	h_thread_print;
 
 HANDLE	acceptedThreadHandles[MAX_ACCEPT_CLIENTS];
 HANDLE  h_thread_accept; //Throw this into array for multiple clients
@@ -140,7 +125,6 @@ int xPosition;
 int yPosition;
 
 u_long lTTL;
-HWND cmdhwnd;
 
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupTCPSrv
@@ -182,8 +166,6 @@ int setupTCPSrv() {
 		exit(600);
 	}
 
-	//CreateSocketInformation(ListenSocket);
-
 	// Bind socket
 	serverTCP.sin_family = AF_INET;
 	serverTCP.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -198,207 +180,6 @@ int setupTCPSrv() {
 	return 0;
 }
 
-/*------------------------------------------------------------------------------------------------------------------
---    FUNCTION: runTcpLoop
---
---    DATE : FEB 08, 2019
---
---    REVISIONS :
---    		(FEB 08, 2019): Created
---
---    DESIGNER : Jacky Li
---
---    PROGRAMMER : Jacky Li
---
---    INTERFACE : void runTcpLoop(SOCKET Listen, bool upload)
---			SOCKET Listen:		The socket which this function will setup and listen on
---			bool upload:		Whether or not to have the listener server save the file
---
---    RETURNS : void
---
---    NOTES :
---			Runs the loop to listen onto the TCP port specified by the windows GUI, continues to run until program
---			ends, only 1 client allowed at any given moment.
---			Exits the entire program if any of the process in setting up is unsuccessful
-----------------------------------------------------------------------------------------------------------------------*/
-void runTcpLoopOld(SOCKET Listen, bool upload) {
-	if (WSAEventSelect(Listen, EventArray[EventTotal - 1], FD_ACCEPT | FD_CLOSE) == SOCKET_ERROR)
-	{
-		OutputDebugString(convertErrString("WSAEventSelect() failed with error", WSAGetLastError()));
-		return;
-	}
-	// Variables
-	std::ofstream out_file;
-
-	// listen to the port, error check
-	if (listen(Listen, SOMAXCONN) == SOCKET_ERROR)
-	{
-		OutputDebugString(convertErrString("listen() failed with error", WSAGetLastError()));
-		return;
-	}
-
-	// Main loop: wait for multiple events
-	while (TRUE)
-	{
-		// Wait for the overlapped I/O call to complete - forever
-		if ((Event = WSAWaitForMultipleEvents(EventTotal, EventArray, FALSE, WSA_INFINITE, FALSE)) == WSA_WAIT_FAILED)
-		{
-			printf("WSAWaitForMultipleEvents failed with error %d\n", WSAGetLastError());
-			return;
-		}
-
-		// WSAEnumNetworkEvents only reports network activity and errors nominated through WSAEventSelect.
-		// return value of WSAWaitMultEvt minus WSA_WAIT_EVENT_0 indicates the index of the event object whose state caused the function to return. 
-		if (WSAEnumNetworkEvents(SocketArray[Event - WSA_WAIT_EVENT_0]->Socket, EventArray[Event - WSA_WAIT_EVENT_0], &NetworkEvents) == SOCKET_ERROR)
-		{
-			printf("WSAEnumNetworkEvents failed with error %d\n", WSAGetLastError());
-			return;
-		}
-
-		// If FD_ACCEPT EVENT
-		if (NetworkEvents.lNetworkEvents & FD_ACCEPT)
-		{
-			if (NetworkEvents.iErrorCode[FD_ACCEPT_BIT] != 0)
-			{
-				printf("FD_ACCEPT failed with error %d\n", NetworkEvents.iErrorCode[FD_ACCEPT_BIT]);
-				break;
-			}
-
-			if ((AcceptSocket = accept(SocketArray[Event - WSA_WAIT_EVENT_0]->Socket, NULL, NULL)) == INVALID_SOCKET)
-			{
-				printf("accept() failed with error %d\n", WSAGetLastError());
-				break;
-			}
-
-			if (EventTotal > WSA_MAXIMUM_WAIT_EVENTS)
-			{
-				printf("Too many connections - closing socket.\n");
-				closesocket(AcceptSocket);
-				break;
-			}
-
-			// Create threads to handle client here? OPTIONAL
-
-			CreateSocketInformation(AcceptSocket);
-
-			if (WSAEventSelect(AcceptSocket, EventArray[EventTotal - 1], FD_READ | FD_WRITE | FD_CLOSE) == SOCKET_ERROR)
-			{
-				printf("WSAEventSelect() failed with error %d\n", WSAGetLastError());
-				return;
-			}
-
-			// ==== Finally connected ====
-			totalBytes = 0;
-			start = std::chrono::high_resolution_clock::now();
-
-			// Upload file option selected
-			if (upload) {
-				// unique filename
-				char buff[20];
-				auto time = std::chrono::system_clock::now();
-				std::time_t time_c = std::chrono::system_clock::to_time_t(time);
-				auto time_tm = *std::localtime(&time_c);
-				strftime(buff, sizeof(buff), "%F-%H%M%S", &time_tm);
-				std::string fileName = buff;
-				out_file.open(fileName + ".txt");
-			}
-		}
-
-		// Try to read and write data to and from the data buffer if read and write events occur.
-		if (NetworkEvents.lNetworkEvents & FD_READ) {
-			if (NetworkEvents.lNetworkEvents & FD_READ &&
-				NetworkEvents.iErrorCode[FD_READ_BIT] != 0) {
-				//printf("FD_READ failed with error %d\n", NetworkEvents.iErrorCode[FD_READ_BIT]);
-				OutputDebugString("FD_READ FAILED");
-				break;
-			}
-
-			// Points to the incoming Event's socket info
-			LPSOCKET_INFORMATION SocketInfo = SocketArray[Event - WSA_WAIT_EVENT_0];
-
-			// Counting max bytes to accept
-			int left = atoi(queryPacketSizeStr);
-
-			// Read data only if the receive buffer is empty.
-			if (SocketInfo->BytesRECV == 0) {
-				SocketInfo->DataBuf.buf = SocketInfo->Buffer;
-				SocketInfo->DataBuf.len = atoi(queryPacketSizeStr);
-				Flags = 0;
-				if (WSARecv(SocketInfo->Socket, &(SocketInfo->DataBuf), 1, &RecvBytes, &Flags, NULL, NULL) == SOCKET_ERROR)
-				{
-					if (WSAGetLastError() != WSAEWOULDBLOCK)
-					{
-						printf("WSARecv() failed with error %d\n", WSAGetLastError());
-						FreeSocketInformation(Event - WSA_WAIT_EVENT_0);
-						return;
-					}
-				}
-				else
-				{
-					char cstr[INPUT_MAX_CHAR];
-					totalBytes += RecvBytes;
-					SocketInfo->BytesRECV = 0;
-					sprintf(cstr, "&RecvBytes : %lu TotalBytes: %lu %\n", RecvBytes, totalBytes);
-
-					OutputDebugString(cstr);
-					// Have read this much
-					//SocketInfo->BytesRECV = 0;
-					//SocketInfo->BytesRECV = RecvBytes;
-					//SocketInfo->DataBuf.len -= RecvBytes;
-					//left -= RecvBytes;
-				}
-			}
-			//// Things to write
-			//if (SocketInfo->BytesRECV > SocketInfo->BytesWRITTEN)
-			//{
-			//	totalBytes += countActualBytes(SocketInfo->DataBuf.buf, SocketInfo->DataBuf.len);
-
-			//	// If we're in upload mode
-			//	if (upload) {
-			//		out_file << SocketInfo->DataBuf.buf;
-			//	}
-			//	// Push buffer pointer up
-			//	SocketInfo->DataBuf.buf = SocketInfo->Buffer + SocketInfo->BytesWRITTEN;
-			//	SocketInfo->DataBuf.len = SocketInfo->BytesRECV - SocketInfo->BytesWRITTEN;
-
-			//	// CLEAR IT
-			//	SocketInfo->BytesRECV = 0;
-			//	SocketInfo->BytesWRITTEN = 0;
-			//}
-		}
-		
-		// Client closes port
-		//if (NetworkEvents.lNetworkEvents & FD_CLOSE)
-		//{
-		//	if (NetworkEvents.iErrorCode[FD_CLOSE_BIT] != 0)
-		//	{
-		//		printf("FD_CLOSE failed with error %d\n", NetworkEvents.iErrorCode[FD_CLOSE_BIT]);
-		//		break;
-		//	}
-		//	end = std::chrono::high_resolution_clock::now();
-		//	totalTime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-
-		//	// Trigger event here to print
-		//	SetEvent(print_evt);
-
-		//	printf("Client disconnect... total bytes rec'd: %d, total time: %d(ms)\n", totalBytes, totalTime);
-		//	printf("Closing socket information %d\n", SocketArray[Event - WSA_WAIT_EVENT_0]->Socket);
-
-		//	// Reset all stats
-		//	totalBytes = 0;
-		//	totalTime = 0;
-		//	expected_packets = 0;
-		//	recv_packets = 0;
-
-		//	out_file.close();
-		//	FreeSocketInformation(Event - WSA_WAIT_EVENT_0);
-		//}
-	} // End while loop
-}
-
-void runTcpLoop(SOCKET Listen, bool upload) {
-
-}
 
 void printDword(DWORD word) {
 
@@ -438,16 +219,6 @@ int setupUDPSrv() {
 		OutputDebugString("UDP addr error");
 		return 4;
 	}
-
-	// This check doesn't work lol
-	/*OutputDebugString("Checking multicast address\n");
-	u_long tmpAddr = inet_addr(serverUDPParams.addrStr);
-	OutputDebugString(serverUDPParams.addrStr);
-	if (!((tmpAddr >= 0xe0000000) || (tmpAddr <= 0xefffffff))) {
-		OutputDebugString("UDP addr error");
-		return 4;
-	}
-	OutputDebugString("multicast address correct\n");*/
 
 	// Check packet size
 	if (serverUDPParams.packetSizeStr[0] == '\0') {
@@ -554,7 +325,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 	SI->DataBuf.len = PACKET_SIZE;
 
 	FILE *fp;
-	fp = fopen("Faded.wav", "rb");
+	fp = fopen("song.wav", "rb");
 
 	while (TRUE) {
 		DWORD readBytes;
@@ -707,9 +478,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
 	ShowWindow(cmdhwnd, nCmdShow);	//Show the first window - our connect module with nothing
 	UpdateWindow(cmdhwnd);
 
-	// Create print event here
-	print_evt = CreateEventA(NULL, FALSE, FALSE, TEXT("PrintEvent"));
-
 	// Message loop
 	while (GetMessage(&Msg, NULL, 0, 0))
 	{
@@ -732,7 +500,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_QUERYBOX_SRV), hwnd, HandleTCPSrvSetup);
 			if (setupTCPSrv() == 0) {
 				h_thread_srv = CreateThread(NULL, 0, runTCPthread, (LPVOID)false, 0, &thread_srv_id);
-				h_thread_print = CreateThread(NULL, 0, printTCPthread, (LPVOID)hwnd, 0, &thread_print_id);
 			}
 			break;
 		case ID_SRV_MULTICAST:
@@ -740,7 +507,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_QUERYBOX_SRV_MULTICAST), hwnd, HandleMulticastSetup);
 			if (setupUDPSrv() == 0) { // valid inputs
 				h_thread_srv = CreateThread(NULL, 0, runUDPthread, (LPVOID)false, 0, &thread_srv_id);
-				h_thread_print = CreateThread(NULL, 0, printUDPthread, (LPVOID)hwnd, 0, &thread_print_id);
 			}
 			break;
 		case ID_CLN_REQFILE:
@@ -1219,39 +985,6 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 }
 
 /*------------------------------------------------------------------------------------------------------------------
---    FUNCTION: printTCPthread
---
---    DATE : FEB 12, 2019
---
---    REVISIONS :
---    		(FEB 12, 2019): Created
---
---    DESIGNER : Jacky Li
---
---    PROGRAMMER : Jacky Li
---
---    INTERFACE : DWORD WINAPI printTCPthread(LPVOID hwnd) 
---			VPVOID hwnd:		The window handle to which this thread should print to
---
---    RETURNS : DWORD
---			200 on completion
---
---    NOTES :
---			Thread function to run the TCP listening server
-----------------------------------------------------------------------------------------------------------------------*/
-DWORD WINAPI printTCPthread(LPVOID hwnd) {
-	while (1) {
-		WaitForSingleObject(print_evt, INFINITE);
-		char cstr[INPUT_MAX_CHAR];
-		char cr[INPUT_MAX_CHAR]{'\r'};
-		sprintf(cstr, "Client disconnect... total bytes rec'd: %d, total time: %d(ms)\n", totalBytes, totalTime);
-		printScreen((HWND)hwnd, cstr);
-		printScreen((HWND)hwnd, cr);
-	}
-	return 200;
-}
-
-/*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: runUDPthread
 --
 --    DATE : FEB 12, 2019
@@ -1286,91 +1019,4 @@ DWORD WINAPI runUDPthread(LPVOID upload) {
 DWORD WINAPI runUDPRecvthread(LPVOID recv) {
 	joiningStream(&clientUDPParams, &ClientSocket, (HWND) recv);
 	return 200;
-}
-
-/*------------------------------------------------------------------------------------------------------------------
---    FUNCTION: printUDPthread
---
---    DATE : FEB 12, 2019
---
---    REVISIONS :
---    		(FEB 12, 2019): Created
---
---    DESIGNER : Jacky Li
---
---    PROGRAMMER : Jacky Li
---
---    INTERFACE : DWORD WINAPI printUDPthread(LPVOID hwnd)
---			VPVOID hwnd:		The window handle to which this thread should print to
---
---    RETURNS : DWORD
---			200 on completion
---
-----------------------------------------------------------------------------------------------------------------------*/
-DWORD WINAPI printUDPthread(LPVOID hwnd) {
-	while (1) {
-		WaitForSingleObject(print_evt, INFINITE);
-		char cstr[INPUT_MAX_CHAR];
-		char cr[INPUT_MAX_CHAR]{ '\r' };
-		//printf("Client EOT... total bytes rec'd: %d, total time: %d(ms), data packets: %d/%d\n", totalBytes, totalTime, recv_packets, expected_packets);
-		sprintf(cstr, "Client disconnect... total bytes rec'd: %d, total time: %d(ms) data packets: %d/%d\n", totalBytes, totalTime, recv_packets, expected_packets);
-		printScreen((HWND)hwnd, cstr);
-		printScreen((HWND)hwnd, cr);
-	}
-	return 200;
-}
-
-// Create a socket information struct based on the passed in SOCKET, inits SI values, and shoves it into a global array of sockets
-BOOL CreateSocketInformation(SOCKET s)
-{
-	LPSOCKET_INFORMATION SI;
-
-	if ((EventArray[EventTotal] = WSACreateEvent()) == WSA_INVALID_EVENT)
-	{
-		printf("WSACreateEvent() failed with error %d\n", WSAGetLastError());
-		return FALSE;
-	}
-
-	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL)
-	{
-		printf("GlobalAlloc() failed with error %d\n", GetLastError());
-		return FALSE;
-	}
-
-	// Prepare SocketInfo structure for use.
-	SI->Socket = s;
-	SI->BytesWRITTEN = 0;
-	SI->BytesRECV = 0;
-	SocketArray[EventTotal] = SI;
-
-	// Setup Buffer size
-	//SI->Buffer = (char *)malloc(atoi(queryPacketSizeStr) * sizeof(char));
-	//memset(SI->Buffer, '\0', atoi(queryPacketSizeStr));
-
-	EventTotal++;
-
-	return(TRUE);
-}
-
-// Frees socket information
-void FreeSocketInformation(DWORD Event)
-{
-	LPSOCKET_INFORMATION SI = SocketArray[Event];
-	DWORD i;
-
-	closesocket(SI->Socket);
-
-	GlobalFree(SI);
-
-	WSACloseEvent(EventArray[Event]);
-
-	// Squash the socket and event arrays
-
-	for (i = Event; i < EventTotal; i++)
-	{
-		EventArray[i] = EventArray[i + 1];
-		SocketArray[i] = SocketArray[i + 1];
-	}
-
-	EventTotal--;
 }
