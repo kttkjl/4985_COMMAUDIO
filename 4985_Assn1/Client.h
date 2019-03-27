@@ -1,5 +1,6 @@
 #pragma once
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "Winmm.lib")
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
 #include <winsock2.h>

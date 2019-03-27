@@ -53,6 +53,7 @@
 
 #define TOTAL_TIMEOUT 5000
 #define MAX_ACCEPT_CLIENTS 12
+#define PACKET_SIZE 8192
 
 static TCHAR CmdModName[] = TEXT("TCP/UDP Receiver");
 //HWND cmdhwnd; // Window handler for main window
@@ -547,7 +548,13 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 	char * testArr[3] = { test, test2, test3 };
 	char buf[128]{ "message sent" };
 	int addr_size = sizeof(struct sockaddr_in);
-	SI->DataBuf.len = 128;
+	char buffer[8192]; // buffer to read .wav file
+	int first = 0; // indicator to delay second udp send
+
+	SI->DataBuf.len = PACKET_SIZE;
+
+	FILE *fp;
+	fp = fopen("song.wav", "rb");
 
 	while (TRUE) {
 		// Send diff message setup
@@ -561,12 +568,33 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 			counter++;
 			break;
 		default:
-			SI->DataBuf.buf = testArr[2];
-			counter++;
+			//SI->DataBuf.buf = testArr[2];
+			//counter++;
+			DWORD readBytes;
+			readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
+
+			if (readBytes == 0) {
+				exit(1);
+			}
+				
+			//empty unloaded space in buffer if buffer isn't full
+			if (readBytes < sizeof(buffer)) {
+
+				memset(buffer + readBytes, 0, sizeof(buffer) - readBytes);
+			}
+
+			SI->DataBuf.buf = &buffer[0];
+
 			break;
 		}
 		if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *) & clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
 			printf("WSASendTo() failed, Error: %d\n", WSAGetLastError());
+
+			//temporary debug statement
+			char err[20];
+			_itoa(WSAGetLastError(), err, 10);
+			OutputDebugString(err);
+
 			return 1;
 		}
 		else {
@@ -578,8 +606,14 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 			printScreen(cmdhwnd, r);
 		}
 
-		/* Wait for the specified interval */
-		Sleep(1000 * 3);
+		//delaying second send for debug, to be removed
+		if (first == 0) {
+			Sleep(1000 * 5);
+			first++;
+		}
+
+		//throttle send frequency to prevent client buffer overflow
+		Sleep(20);
 	}
 	closesocket(Listen);
 
