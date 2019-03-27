@@ -1,8 +1,97 @@
 #include "Client.h"
 
+#define CHUNK_SIZE 8192
+#define CHUNK_NUM 3000
+
+static WAVEHDR* allocateBufferMemory();
+static void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size);
+static void CALLBACK waveOutProc(HWAVEOUT, UINT, DWORD, DWORD, DWORD);
+
+static volatile int waveFreeBlockCount;
+static int waveCurrentBlock;
+static CRITICAL_SECTION mutex;
+static WAVEHDR* chunkBuffer;
+
 struct ip_mreq stMreq;
 SOCKADDR_IN lclAddr, srcAddr;
 LPSOCKET_INFORMATION SI;
+
+
+static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
+{
+	if (uMsg != WOM_DONE) {
+		//device open 
+		return;
+	}
+		
+	EnterCriticalSection(&mutex);
+	waveFreeBlockCount++;
+	LeaveCriticalSection(&mutex);
+}
+
+WAVEHDR* allocateBufferMemory()
+{
+	unsigned char* buffer;
+	WAVEHDR* chunks;
+	DWORD bufferSize = (CHUNK_SIZE + sizeof(WAVEHDR)) * CHUNK_NUM;
+
+	if ((buffer = (unsigned char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize)) == NULL) {
+		//error when allocating memory
+		ExitProcess(9);
+	}
+
+	chunks = (WAVEHDR*)buffer;
+	buffer += sizeof(WAVEHDR) * CHUNK_NUM;
+
+	for (int i = 0; i < CHUNK_NUM; i++) {
+		chunks[i].dwBufferLength = CHUNK_SIZE;
+		chunks[i].lpData = (char*)buffer;
+		buffer += CHUNK_SIZE;
+	}
+
+	return chunks;
+}
+
+
+
+void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size)
+{
+	WAVEHDR* current;
+	int remain;
+	current = &chunkBuffer[waveCurrentBlock];
+
+	while (size > 0) {
+
+		if (current->dwFlags & WHDR_PREPARED)
+			waveOutUnprepareHeader(hWaveOut, current, sizeof(WAVEHDR));
+		if (size < (int)(CHUNK_SIZE - current->dwUser)) {
+			memcpy(current->lpData + current->dwUser, data, size);
+			current->dwUser += size;
+			break;
+		}
+		remain = CHUNK_SIZE - current->dwUser;
+		memcpy(current->lpData + current->dwUser, data, remain);
+		size -= remain;
+		data += remain;
+		current->dwBufferLength = CHUNK_SIZE;
+		waveOutPrepareHeader(hWaveOut, current, sizeof(WAVEHDR));
+		waveOutWrite(hWaveOut, current, sizeof(WAVEHDR));
+
+		EnterCriticalSection(&mutex);
+		waveFreeBlockCount--;
+		LeaveCriticalSection(&mutex);
+
+		while (!waveFreeBlockCount) {
+			Sleep(10);
+		}
+
+		waveCurrentBlock++;
+		waveCurrentBlock %= CHUNK_NUM;
+		current = &chunkBuffer[waveCurrentBlock];
+		current->dwUser = 0;
+	}
+}
+
 
 int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN * tgtAddr) {
 	int err;
@@ -260,6 +349,9 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 		exit(1);
 	}
 
+	HWAVEOUT hWaveOut;
+	WAVEFORMATEX wfx;
+
 	int err;
 	DWORD flags = 0;
 	SI->Buffer = (char *)malloc(AUD_BUF_SIZE);
@@ -276,12 +368,43 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 	char packet_buf[AUD_BUF_SIZE]{ 0 };
 	int chars_written = 0;
 
+
+	//initialize 
+	chunkBuffer = allocateBufferMemory();
+	waveFreeBlockCount = CHUNK_NUM;
+	waveCurrentBlock = 0;
+	InitializeCriticalSection(&mutex);
+
+	//default wave header spec
+	wfx.nSamplesPerSec = 44100;
+	wfx.wBitsPerSample = 16;
+	wfx.nChannels = 2;
+	wfx.cbSize = 0;
+	wfx.wFormatTag = WAVE_FORMAT_PCM;
+	wfx.nBlockAlign = (wfx.wBitsPerSample * wfx.nChannels) >> 3;
+	wfx.nAvgBytesPerSec = wfx.nBlockAlign * wfx.nSamplesPerSec;
+
+	if (waveOutOpen(&hWaveOut, WAVE_MAPPER, &wfx, (DWORD_PTR)waveOutProc, (DWORD_PTR)&waveFreeBlockCount, CALLBACK_FUNCTION) != MMSYSERR_NOERROR) {
+		//error opening playback device
+		ExitProcess(10);
+	}
+
+	//save to file
+	//FILE *fp;
+	//fp = fopen("recv.wav", "wb");
+	//fclose(fp);
+	//fp = fopen("recv.wav", "ab");
+
+
 	while (TRUE) {
 		int addr_size = sizeof(struct sockaddr_in);
 
 		if (WSARecvFrom(*sock, &(SI->DataBuf), 1, NULL, &flags, (SOCKADDR *)& srcAddr, &addr_size, &SI->Overlapped, completeCallback) != 0) {
 			if (WSAGetLastError() != WSA_IO_PENDING) {
-				OutputDebugString("IO ERROR");
+				OutputDebugString("IO ERROR \n error no ");
+				char err[20];
+				_itoa(WSAGetLastError(), err, 10);
+				OutputDebugString(err);
 
 				// Get last thing in buffer
 				char temp_buf[AUD_BUF_SIZE]{ 0 };
@@ -300,33 +423,60 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 
 		SleepEx(INFINITE, TRUE);
 
-		// Calc
-		bytesToRead = bytesToRead - SI->BytesRECV;
-		// Save current read buffer
-		for (int i = 0; i < SI->BytesRECV; ++i) {
-			packet_buf[chars_written] = SI->Buffer[i];
-			chars_written++;
-		}
+		//save to file
+		//fwrite(SI->DataBuf.buf, sizeof(char), SI->DataBuf.len, fp);
 
-		if (bytesToRead == 0) {
-			// Full packet get, Write to file
-			printScreen(hwnd, SI->Buffer);
-			// Reset BytesToRead and BytesRecv
-			memset(SI->Buffer, '\0', AUD_BUF_SIZE);
-			bytesToRead = AUD_BUF_SIZE;
-			SI->BytesRECV = 0;
-			SI->DataBuf.len = AUD_BUF_SIZE;
-			// Temp buffer reset
-			chars_written = 0;
-			memset(packet_buf, '\0', AUD_BUF_SIZE);
-		}
-		else {
-			// More to read, call another read again
-			SI->DataBuf.len = SI->DataBuf.len - SI->BytesRECV;
-			bytesToRead = SI->DataBuf.len;
-		}
+		addtoBufferAndPlay(hWaveOut, SI->DataBuf.buf, SI->DataBuf.len);
+
+		//// Calc
+		//bytesToRead = bytesToRead - SI->BytesRECV;
+		//// Save current read buffer
+		//for (int i = 0; i < SI->BytesRECV; ++i) {
+		//	packet_buf[chars_written] = SI->Buffer[i];
+		//	chars_written++;
+		//}
+
+		//if (bytesToRead == 0) {
+		//	// Full packet get, Write to file
+		//	printScreen(hwnd, SI->Buffer);
+		//	// Reset BytesToRead and BytesRecv
+		//	memset(SI->Buffer, '\0', AUD_BUF_SIZE);
+		//	bytesToRead = AUD_BUF_SIZE;
+		//	SI->BytesRECV = 0;
+		//	SI->DataBuf.len = AUD_BUF_SIZE;
+		//	// Temp buffer reset
+		//	chars_written = 0;
+		//	memset(packet_buf, '\0', AUD_BUF_SIZE);
+		//}
+		//else {
+		//	// More to read, call another read again
+		//	SI->DataBuf.len = SI->DataBuf.len - SI->BytesRECV;
+		//	bytesToRead = SI->DataBuf.len;
+		//}
 
 	} // end of infinite loop
+
+
+	//save to file
+	//fclose(fp);
+
+	//wait for sound to finish playing
+	while (waveFreeBlockCount < CHUNK_NUM) {
+		Sleep(10);
+	}
+
+	//unprepare all chunks
+	for (int i = 0; i < waveFreeBlockCount; i++) {
+		if (chunkBuffer[i].dwFlags & WHDR_PREPARED) {
+			waveOutUnprepareHeader(hWaveOut, &chunkBuffer[i], sizeof(WAVEHDR));
+		}
+
+	}
+
+	//audio clean up
+	DeleteCriticalSection(&mutex);
+	HeapFree(GetProcessHeap(), 0, chunkBuffer);
+	waveOutClose(hWaveOut);
 
 	stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
 	stMreq.imr_interface.s_addr = INADDR_ANY;
