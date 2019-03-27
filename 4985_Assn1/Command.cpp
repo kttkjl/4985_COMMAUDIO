@@ -325,7 +325,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 	SI->DataBuf.len = PACKET_SIZE;
 
 	FILE *fp;
-	fp = fopen("song.wav", "rb");
+	fp = fopen("Faded.wav", "rb");
 
 	while (TRUE) {
 		DWORD readBytes;
