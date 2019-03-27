@@ -1127,8 +1127,8 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	SocketInfo->totalBytesTransferred = 0;
 	// Wait for Client
 	// SocketInfo population
-	SocketInfo->Buffer = (char *)malloc(DATA_BUF_SIZE);
-	memset(SocketInfo->Buffer, 0, sizeof(SocketInfo->Buffer));
+	//SocketInfo->Buffer = (char *)malloc(DATA_BUF_SIZE);
+	//memset(SocketInfo->Buffer, 0, sizeof(char) * DATA_BUF_SIZE);
 	SocketInfo->DataBuf.len = DATA_BUF_SIZE;
 	SocketInfo->DataBuf.buf = SocketInfo->Buffer;
 	SocketInfo->Socket = (SOCKET)acceptSocket;
@@ -1169,24 +1169,23 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	
 	OutputDebugString(fullPath.c_str());
 	OutputDebugString("\n");
-	if ((err = fopen_s(&fptr, fullPath.c_str(), "r") != 0)) {
+	if ((err = fopen_s(&fptr, fullPath.c_str(), "rb") != 0)) {
 		OutputDebugString("file open error");
 		exit(404);
 	}
 
 	// Reset the buffer
-	memset(SocketInfo->Buffer, 0, sizeof(SocketInfo->Buffer));
+	//memset(SocketInfo->Buffer, 0, DATA_BUF_SIZE);
 
 	// Send loop, probably
 	char ch;
 	int bufInd = 0;
-	while ((ch = fgetc(fptr)) != EOF) {
-		if (bufInd < DATA_BUF_SIZE - 1) {
-			SocketInfo->Buffer[bufInd] = ch;
-			bufInd++;
-		} else {
-			// Append last letter
-			SocketInfo->Buffer[bufInd] = ch;
+	DWORD readBytes;
+	char sendBuffer[PACKET_SIZE];
+	while ((readBytes = fread(sendBuffer, sizeof(char), sizeof(sendBuffer), fptr)) >0) {
+
+		SocketInfo->DataBuf.buf = &sendBuffer[0];
+			SocketInfo->DataBuf.len = PACKET_SIZE;
 			// Buffer filled, gotta send whole buffer
 			while (SocketInfo->BytesWRITTEN < DATA_BUF_SIZE) {
 				// Not all sent
@@ -1204,7 +1203,7 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 			memset(SocketInfo->Buffer, 0, sizeof(SocketInfo->Buffer));
 			SocketInfo->BytesWRITTEN = 0;
 			bufInd = 0;
-		}
+		
 	}
 	// Show progress of final
 	char pstr[128];

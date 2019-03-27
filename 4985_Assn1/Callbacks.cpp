@@ -30,7 +30,7 @@ void CALLBACK clnRecvFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 	}
 	// Print stats
 	char cstr[DATA_BUF_SIZE];
-	SI->BytesRECV = countActualBytes(SI->DataBuf.buf, BytesTransferred);
+	SI->BytesRECV = BytesTransferred;
 	sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
 	SI->totalBytesTransferred += SI->BytesRECV;
 	//SI->totalBytesTransferred += countActualBytes(SI->DataBuf.buf, BytesTransferred);
@@ -50,8 +50,8 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 	char cstr[DATA_BUF_SIZE];
 	sprintf(cstr, "BytesSent'd: %d\n", BytesTransferred);
 
-	SI->BytesWRITTEN = SI->BytesWRITTEN + countActualBytes(SI->DataBuf.buf, BytesTransferred);
-	SI->totalBytesTransferred += countActualBytes(SI->DataBuf.buf, BytesTransferred);
+	SI->BytesWRITTEN = SI->BytesWRITTEN + BytesTransferred;
+	SI->totalBytesTransferred +=  BytesTransferred;
 	OutputDebugString(cstr);
 }
 

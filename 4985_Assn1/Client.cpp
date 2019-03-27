@@ -175,7 +175,13 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 	auto time_tm = *std::localtime(&time_c);
 	strftime(buff, sizeof(buff), "%F-%H%M%S", &time_tm);
 	std::string fn = buff;
-	out_file.open(fn + ".txt");
+
+
+	FILE *fp;
+	fp = fopen("song.wav", "wb");
+
+	
+	//out_file.open(fn + ".txt");
 	
 	// Setup Read params
 	int bytesToRead = DATA_BUF_SIZE;
@@ -190,7 +196,7 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 				// Get last thing in buffer
 				char temp_buf[DATA_BUF_SIZE]{ 0 };
 				memcpy(temp_buf, SI->Buffer, SI->BytesRECV);
-				out_file.write(temp_buf, SI->BytesRECV);
+				//out_file.write(temp_buf, SI->BytesRECV);
 				// Debug stats
 				char cstr[256];
 				sprintf(cstr, "Total Bytes Recv'd: %d\n", SI->totalBytesTransferred);
@@ -205,30 +211,35 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 		//OutputDebugString("SleepEX reached cln\n");
 		SleepEx(INFINITE, TRUE);
 
-		// Calc
-		bytesToRead = bytesToRead - SI->BytesRECV;
-		// Save current read buffer
-		for (int i = 0; i < SI->BytesRECV; ++i) {
-			packet_buf[chars_written] = SI->Buffer[i];
-			chars_written++;
-		}
 
-		if (bytesToRead == 0) {
-			// Full packet get, Write to file
-			out_file.write(packet_buf, DATA_BUF_SIZE);
-			// Reset BytesToRead and BytesRecv
-			memset(SI->Buffer, '\0', DATA_BUF_SIZE);
-			bytesToRead = DATA_BUF_SIZE;
-			SI->BytesRECV = 0;
-			SI->DataBuf.len = DATA_BUF_SIZE;
-			// Temp buffer reset
-			chars_written = 0;
-			memset(packet_buf, '\0', DATA_BUF_SIZE);
-		} else {
-			// More to read, call another read again
-			SI->DataBuf.len = SI->DataBuf.len - SI->BytesRECV;
-			bytesToRead = SI->DataBuf.len;
-		}
+		DWORD readBytes;
+		readBytes = fwrite(SI->DataBuf.buf, sizeof(char), SI->BytesRECV, fp);
+		memset(SI->Buffer, 0, DATA_BUF_SIZE);
+
+		//// calc
+		//bytestoread = bytestoread - si->bytesrecv;
+		//// save current read buffer
+		//for (int i = 0; i < si->bytesrecv; ++i) {
+		//	packet_buf[chars_written] = si->buffer[i];
+		//	chars_written++;
+		//}
+
+		//if (bytestoread == 0) {
+		//	// full packet get, write to file
+		//	out_file.write(packet_buf, data_buf_size);
+		//	// reset bytestoread and bytesrecv
+		//	memset(si->buffer, '\0', data_buf_size);
+		//	bytestoread = data_buf_size;
+		//	si->bytesrecv = 0;
+		//	si->databuf.len = data_buf_size;
+		//	// temp buffer reset
+		//	chars_written = 0;
+		//	memset(packet_buf, '\0', data_buf_size);
+		//} else {
+		//	// more to read, call another read again
+		//	si->databuf.len = si->databuf.len - si->bytesrecv;
+		//	bytestoread = si->databuf.len;
+		//}
 	}
 
 	return 0;
