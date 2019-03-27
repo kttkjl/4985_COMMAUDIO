@@ -542,11 +542,11 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 	DWORD Flags = 0;
 	int counter = 0;
-	char test[128]{ "#TSMWIN\n" };
-	char test2[128]{ "hi there\n" };
-	char test3[128]{ "go wawyasdsfs\n" };
+	char test[128]{ "Broadcasting." };
+	char test2[128]{ "Broadcasting.." };
+	char test3[128]{ "Broadcasting..." };
 	char * testArr[3] = { test, test2, test3 };
-	char buf[128]{ "message sent" };
+	char buf[128]{ "Broadcasting." };
 	int addr_size = sizeof(struct sockaddr_in);
 	char buffer[8192]; // buffer to read .wav file
 	int first = 0; // indicator to delay second udp send
@@ -554,39 +554,24 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 	SI->DataBuf.len = PACKET_SIZE;
 
 	FILE *fp;
-	fp = fopen("song.wav", "rb");
+	fp = fopen("Faded.wav", "rb");
 
 	while (TRUE) {
-		// Send diff message setup
-		switch (counter % 3) {
-		case 1:
-			SI->DataBuf.buf = testArr[0];
-			counter++;
-			break;
-		case 2:
-			SI->DataBuf.buf = testArr[1];
-			counter++;
-			break;
-		default:
-			//SI->DataBuf.buf = testArr[2];
-			//counter++;
-			DWORD readBytes;
-			readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
+		DWORD readBytes;
+		readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
 
-			if (readBytes == 0) {
-				exit(1);
-			}
-				
-			//empty unloaded space in buffer if buffer isn't full
-			if (readBytes < sizeof(buffer)) {
-
-				memset(buffer + readBytes, 0, sizeof(buffer) - readBytes);
-			}
-
-			SI->DataBuf.buf = &buffer[0];
-
-			break;
+		if (readBytes == 0) {
+			exit(1);
 		}
+				
+		//empty unloaded space in buffer if buffer isn't full
+		if (readBytes < sizeof(buffer)) {
+
+			memset(buffer + readBytes, 0, sizeof(buffer) - readBytes);
+		}
+
+		SI->DataBuf.buf = &buffer[0];
+
 		if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *) & clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
 			printf("WSASendTo() failed, Error: %d\n", WSAGetLastError());
 
@@ -598,12 +583,11 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 			return 1;
 		}
 		else {
-			if (counter % 3 == 1) {
-				wipeScreen(cmdhwnd);
-			}
-			char r[1]{ '\r' };
-			printScreen(cmdhwnd, buf);
-			printScreen(cmdhwnd, r);
+			wipeScreen(cmdhwnd);
+			printScreen(cmdhwnd, testArr[counter]);
+			++counter;
+			if (counter == 3)
+				counter = 0;
 		}
 
 		//delaying second send for debug, to be removed

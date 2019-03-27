@@ -1,5 +1,12 @@
 #include "Callbacks.h"
 
+HWND hwnd;
+
+void set_hwnd(HWND h)
+{
+	hwnd = h;
+}
+
 void CALLBACK recvFileReqCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags) {
 	// Black magic fuckery here
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(Overlapped->hEvent);
@@ -84,9 +91,13 @@ void CALLBACK completeCallback(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPP
 
 	// Print stats
 	char cstr[AUD_BUF_SIZE];
+	char test[2]{ "_" };
 	SI->BytesRECV = countActualBytes(SI->DataBuf.buf, cbTransferred);
 	sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
 	SI->totalBytesTransferred += SI->BytesRECV;
 	OutputDebugString(SI->Buffer);
 	OutputDebugString(cstr);
+
+	printScreen(hwnd, test);
+	
 }

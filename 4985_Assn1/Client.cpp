@@ -349,6 +349,8 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 		exit(1);
 	}
 
+	set_hwnd(hwnd);
+
 	HWAVEOUT hWaveOut;
 	WAVEFORMATEX wfx;
 

@@ -7,6 +7,9 @@
 #include <string>
 #include "SocketInformation.h"
 #include "utilities.h"
+#include "command.h"
+
+void set_hwnd(HWND h);
 
 void CALLBACK recvFileReqCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags);
 void CALLBACK clnRecvFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags);
