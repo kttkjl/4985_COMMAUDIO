@@ -47,10 +47,9 @@
 #include "Client.h"
 
 #define TOTAL_TIMEOUT 5000
-#define MAX_ACCEPT_CLIENTS 12
 #define PACKET_SIZE 8192
 
-static TCHAR CmdModName[] = TEXT("TCP/UDP Receiver");
+static TCHAR CmdModName[] = TEXT("Lolicon Radio 498.5FM");
 HWND cmdhwnd; // Window handler for main window
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -58,8 +57,6 @@ INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARA
 void printScreen(HWND hwnd, char *buffer);
 
 // Query params, along with file
-char queryPortStr[INPUT_MAX_CHAR]{ '\0' };
-char queryPacketSizeStr[INPUT_MAX_CHAR]{ '\0' };
 QueryParams serverTCPParams;
 QueryParams serverUDPParams;
 QueryParams clientUDPParams;
@@ -74,14 +71,9 @@ int runUdpLoop(SOCKET s, bool upload);
 
 // Thread functions
 DWORD WINAPI runTCPthread(LPVOID upload);
-DWORD WINAPI printTCPthread(LPVOID hwnd);
 DWORD WINAPI runUDPthread(LPVOID upload);
 DWORD WINAPI runAcceptThread(LPVOID acceptSocket);
 DWORD WINAPI runUDPRecvthread(LPVOID recv);
-
-DWORD EventTotal = 0;
-WSAEVENT				EventArray[WSA_MAXIMUM_WAIT_EVENTS];
-LPSOCKET_INFORMATION	SocketArray[WSA_MAXIMUM_WAIT_EVENTS];
 
 // WSA Events, only need write_event for now
 SOCKET				ListenSocket;
@@ -93,31 +85,18 @@ SOCKADDR_IN			serverTCP;
 SOCKADDR_IN			serverUDP;
 SOCKADDR_IN			clientUDP;
 
-// Print event
 DWORD	thread_srv_id;
-
-DWORD	acceptedClients[MAX_ACCEPT_CLIENTS];
 DWORD	thread_accept_id; //Throw this into array for multiple clients
 
 HANDLE	h_thread_srv;
-
-HANDLE	acceptedThreadHandles[MAX_ACCEPT_CLIENTS];
 HANDLE  h_thread_accept; //Throw this into array for multiple clients
 
 DWORD Flags;
 DWORD RecvBytes;
 
 // Transfer statistics
-unsigned long totalBytes = 0;
-unsigned int totalTime = 0;
-int expected_packets = 0;
-int recv_packets = 0;
-std::chrono::time_point<std::chrono::high_resolution_clock> start;
-std::chrono::time_point<std::chrono::high_resolution_clock> end;
-
-//unused right now
-char queryResult[MAXGETHOSTSTRUCT];
-char inputTextBuffer[INPUT_MAX_CHAR];
+//std::chrono::time_point<std::chrono::high_resolution_clock> start;
+//std::chrono::time_point<std::chrono::high_resolution_clock> end;
 
 // Text metrics for printing to screen
 TEXTMETRIC tm;
@@ -125,6 +104,9 @@ int xPosition;
 int yPosition;
 
 u_long lTTL;
+bool doneplaying = false;
+std::string library[128];
+int libindex = -1;
 
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupTCPSrv
@@ -180,11 +162,6 @@ int setupTCPSrv() {
 	return 0;
 }
 
-
-void printDword(DWORD word) {
-
-}
-
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupUDPSrv
 --
@@ -220,11 +197,6 @@ int setupUDPSrv() {
 		return 4;
 	}
 
-	// Check packet size
-	if (serverUDPParams.packetSizeStr[0] == '\0') {
-		OutputDebugString("UDP packet size error");
-		return 3;
-	}
 	// Startup
 	if ((err = WSAStartup(0x0202, &WSAData)) != 0) //No usable DLL
 	{
@@ -319,20 +291,32 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 	char * testArr[3] = { test, test2, test3 };
 	char buf[128]{ "Broadcasting." };
 	int addr_size = sizeof(struct sockaddr_in);
-	char buffer[8192]; // buffer to read .wav file
-	int first = 0; // indicator to delay second udp send
+	char buffer[AUD_BUF_SIZE]; // buffer to read .wav file
 
 	SI->DataBuf.len = PACKET_SIZE;
 
 	FILE *fp;
-	fp = fopen("Faded.wav", "rb");
+	char songname[128]{ "song.wav" };
+	//char songname[128]{ "./Library/Faded.wav" };
+	char nowplaying[128]{ "Now Playing: " };
+	char errormsg[128]{ "Broadcast error" };
+	char broadcastdone[128]{ "Broadcast ended" };
+	fp = fopen(songname, "rb");
+
+	discBool = false;
 
 	while (TRUE) {
+		if (discBool) {
+			OutputDebugString("Disconnect clicked\n");
+			break;
+		}
+
 		DWORD readBytes;
 		readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
 
 		if (readBytes == 0) {
-			exit(1);
+			OutputDebugString("Done sending\n");
+			break;
 		}
 				
 		//empty unloaded space in buffer if buffer isn't full
@@ -346,6 +330,8 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 		if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *) & clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
 			printf("WSASendTo() failed, Error: %d\n", WSAGetLastError());
 
+			wipeScreen(cmdhwnd);
+			printScreen(cmdhwnd, broadcastdone);
 			//temporary debug statement
 			char err[20];
 			_itoa(WSAGetLastError(), err, 10);
@@ -354,23 +340,24 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 			return 1;
 		}
 		else {
-			wipeScreen(cmdhwnd);
-			printScreen(cmdhwnd, testArr[counter]);
 			++counter;
-			if (counter == 3)
-				counter = 0;
-		}
-
-		//delaying second send for debug, to be removed
-		if (first == 0) {
-			Sleep(1000 * 5);
-			first++;
+			if (counter == 1) {
+				set_print_x(380);
+				set_print_y(200);
+				printScreen(cmdhwnd, nowplaying);
+				printScreen(cmdhwnd, songname);
+			}
 		}
 
 		//throttle send frequency to prevent client buffer overflow
 		Sleep(20);
 	}
+
+	OutputDebugString("Leaving Multicast server\n");
 	closesocket(Listen);
+
+	wipeScreen(cmdhwnd);
+	printScreen(cmdhwnd, broadcastdone);
 
 	/* Tell WinSock we're leaving */
 	WSACleanup();
@@ -474,7 +461,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
 		return 0;
 
 	cmdhwnd = CreateWindow(CmdModName, CmdModName, WS_OVERLAPPEDWINDOW, 10, 10,
-		600, 400, NULL, NULL, hInst, NULL);
+		800, 600, NULL, NULL, hInst, NULL);
 	ShowWindow(cmdhwnd, nCmdShow);	//Show the first window - our connect module with nothing
 	UpdateWindow(cmdhwnd);
 
@@ -494,8 +481,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	switch (message)
 	{
 	case WM_COMMAND:
-		switch(LOWORD(wParam)){
+		switch(LOWORD(wParam)) {
 		case ID_SRV_START:
+			wipeScreen(cmdhwnd);
 			clearInputs(&serverTCPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_QUERYBOX_SRV), hwnd, HandleTCPSrvSetup);
 			if (setupTCPSrv() == 0) {
@@ -503,6 +491,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			}
 			break;
 		case ID_SRV_MULTICAST:
+			wipeScreen(cmdhwnd);
 			clearInputs(&serverUDPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_QUERYBOX_SRV_MULTICAST), hwnd, HandleMulticastSetup);
 			if (setupUDPSrv() == 0) { // valid inputs
@@ -510,21 +499,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			}
 			break;
 		case ID_CLN_REQFILE:
+			wipeScreen(cmdhwnd);
 			clearInputs(&clientTgtParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_QUERY_FILE), hwnd, HandleClnQuery);
 			if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
-				OutputDebugString("TCPCLNSetup ok\n");
 				requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename);
 			}
-			OutputDebugString("REQFILE\n");
 			break;
 		case ID_CLN_JOINSTREAM:
+			wipeScreen(cmdhwnd);
 			clearInputs(&clientUDPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_JOINBROADCAST), hwnd, HandleClnJoin);
 			if (setupUDPCln(&clientUDPParams, &ClientSocket, &WSAData) == 0) {
-				OutputDebugString("ID_CLN_JOINSTREAM\n");
 				h_thread_accept = CreateThread(NULL, 0, runUDPRecvthread, (LPVOID)cmdhwnd, 0, NULL);
 			}
+			break;
+		case ID_GEN_DISCONNECT:
+			discBool = true;
 			break;
 		}
 		break;
@@ -668,13 +659,6 @@ INT_PTR CALLBACK HandleMulticastSetup(HWND hDlg, UINT message, WPARAM wParam, LP
 				MessageBoxA(hDlg, MSG_INPUT_ERR_NOINPUT, LABEL_INPUT_ERR, MB_OK);
 				break;
 			}
-			/*Get Packet size*/
-			err = GetDlgItemText(hDlg, IDT_MULTICAST_PACKETSIZE, serverUDPParams.packetSizeStr, sizeof(serverUDPParams.packetSizeStr));
-			if (err == 0) {
-				EndDialog(hDlg, LOWORD(wParam));
-				MessageBoxA(hDlg, MSG_INPUT_ERR_NOINPUT, LABEL_INPUT_ERR, MB_OK);
-				break;
-			}
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}
@@ -785,7 +769,7 @@ INT_PTR CALLBACK HandleClnJoin(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 	switch (message) {
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDCANCEL) {
-			MessageBox(NULL, "Pressed cancel", "cancelled", MB_OK);
+			MessageBox(NULL, "Pressed cancel", "Cancelled", MB_OK);
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)FALSE;
 		}
@@ -849,11 +833,10 @@ DWORD WINAPI runTCPthread(LPVOID upload) {
 		}
 		else {
 			OutputDebugString("Accepted\n");
-			char buf[128]{"accepted client"};
+			char buf[128]{"Accepted client"};
 			char r[1]{ '\r' };
 			printScreen(cmdhwnd, buf);
 			printScreen(cmdhwnd, r);
-			//CreateThread(NULL, 0, runTCPthread, (LPVOID)false, 0, &thread_srv_id);
 			if ((h_thread_accept = CreateThread(NULL, 0, runAcceptThread, (LPVOID)AcceptSocket, 0, &thread_accept_id)) == NULL) {
 				return 405;
 			}
@@ -958,10 +941,9 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	// Show progress of final
 	char pstr[128];
 	char cr[1]{ '\r' };
+	char sentmsg[128]{ " sent to client" };
 	sprintf(pstr, "Last buffer index: %d\n", bufInd);
 	SocketInfo->DataBuf.len = bufInd;
-	printScreen(cmdhwnd, pstr);
-	printScreen(cmdhwnd, cr);
 
 	//Send last thing
 	if (WSASend((SOCKET)acceptSocket, &(SocketInfo->DataBuf), 1, NULL, Flags, &(SocketInfo->Overlapped), srvSentFileCallback) == SOCKET_ERROR)
@@ -978,6 +960,9 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	char cstr[DATA_BUF_SIZE];
 	sprintf(cstr, "Total Bytes Sent'd: %d\n", SocketInfo->totalBytesTransferred);
 	OutputDebugString(cstr);
+
+	printScreen(cmdhwnd, filename);
+	printScreen(cmdhwnd, cr);
 
 	closesocket(SocketInfo->Socket);
 	GlobalFree(SocketInfo);
@@ -1007,16 +992,172 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 --			Thread function to run the UDP listening server
 ----------------------------------------------------------------------------------------------------------------------*/
 DWORD WINAPI runUDPthread(LPVOID upload) {
+	printLibrary(cmdhwnd);
 	while (1) {
 		if (runUdpLoop(ListenSocket, (BOOL)upload) == 1) {
-			OutputDebugString("runUDPthread error\n");
+			OutputDebugString("runUDPthread exit\n");
 			break;
 		}
+		/*else if (check if there are other songs){
+
+		}*/
 	}
+	doneplaying = true;
 	return 200;
 }
 
 DWORD WINAPI runUDPRecvthread(LPVOID recv) {
-	joiningStream(&clientUDPParams, &ClientSocket, (HWND) recv);
+	joiningStream(&clientUDPParams, &ClientSocket, (HWND) recv, &discBool);
+	OutputDebugString("Finished runUDPRecvthread\n");
 	return 200;
+}
+
+DWORD WINAPI printSoundProgress(LPVOID hwnd) {
+	int counter = 0;
+	char dot[2] = ".";
+	char listening_msg[128] = "Listening to radio";
+	char done[128] = "Done broadcast";
+	bool listen_bool = false;
+
+	discBool = false;
+
+	while (1) {
+		if (discBool)
+			break;
+
+		if (counter == 5) {
+			wipeScreen(cmdhwnd);
+			counter = 0;
+			listen_bool = false;
+		}
+
+		if (!listen_bool) {
+			printScreen(cmdhwnd, listening_msg);
+			listen_bool = true;
+		}
+
+		printScreen(cmdhwnd, dot);
+		++counter;
+		Sleep(1000);
+	}
+	wipeScreen(cmdhwnd);
+	printScreen(cmdhwnd, done);
+	return 700;
+}
+
+void printLibrary(HWND h) {
+	WIN32_FIND_DATA ffd;
+	LARGE_INTEGER filesize;
+	HDC textScreen = GetDC(h);
+	char szDir[MAX_PATH];
+	size_t length_of_arg;
+	HANDLE hFind = INVALID_HANDLE_VALUE;
+	DWORD dwError = 0;
+	char r[128] = "\r";
+	char nosongs[128] = "No songs";
+
+	Rectangle(textScreen, 5, 5, 175, 530);
+
+	strcpy(szDir, "./");
+	//strcpy(szDir, "./Library");
+	strcat(szDir, "\\*");
+
+	hFind = FindFirstFile(szDir, &ffd);
+
+	if (INVALID_HANDLE_VALUE == hFind)
+	{
+		DisplayErrorBox(TEXT("FindFirstFile"));
+		return;
+	}
+
+	// List all the files in the directory with some info about them.
+
+	set_print_x(7);
+	set_print_y(7);
+
+	do
+	{
+		if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+			++libindex;
+			filesize.LowPart = ffd.nFileSizeLow;
+			filesize.HighPart = ffd.nFileSizeHigh;
+			modPrintScreen(h, ffd.cFileName, 7);
+			modPrintScreen(h, r, 7);
+			std::string tmp(ffd.cFileName);
+			library[libindex] = tmp;
+		}
+	} while (FindNextFile(hFind, &ffd) != 0);
+
+	if (libindex == -1) {
+		modPrintScreen(h, nosongs, 7);
+	}
+
+	dwError = GetLastError();
+	if (dwError != ERROR_NO_MORE_FILES)
+	{
+		DisplayErrorBox(TEXT("FindFirstFile"));
+	}
+
+	FindClose(hFind);
+	//return dwError;
+}
+
+
+void DisplayErrorBox(LPCSTR lpszFunction)
+{
+	// Retrieve the system error message for the last-error code
+
+	LPVOID lpMsgBuf;
+	LPVOID lpDisplayBuf;
+	DWORD dw = GetLastError();
+
+	FormatMessage(
+		FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		FORMAT_MESSAGE_FROM_SYSTEM |
+		FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL,
+		dw,
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		(LPTSTR)&lpMsgBuf,
+		0, NULL);
+
+	// Display the error message and clean up
+
+	lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
+		(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
+	StringCchPrintf((LPTSTR)lpDisplayBuf,
+		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+		TEXT("%s failed with error %d: %s"),
+		lpszFunction, dw, lpMsgBuf);
+	MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
+
+	LocalFree(lpMsgBuf);
+	LocalFree(lpDisplayBuf);
+}
+
+void modPrintScreen(HWND hwnd, char *buffer, int startX) {
+	HDC textScreen = GetDC(hwnd);
+	SIZE size;
+	GetTextMetrics(textScreen, &tm);        // get text metrics 
+
+	if (*buffer == '\r')
+	{
+		yPosition = yPosition + tm.tmHeight + tm.tmExternalLeading;
+		set_print_x(startX);
+		return;
+	}
+
+	GetTextExtentPoint32(textScreen, buffer, strlen(buffer), &size);
+
+	TextOut(textScreen, xPosition, yPosition, buffer, strlen(buffer));
+	xPosition = xPosition + size.cx + 1;
+	ReleaseDC(hwnd, textScreen);
+}
+
+void set_print_x(int x) {
+	xPosition = x;
+}
+
+void set_print_y(int y) {
+	yPosition = y;
 }

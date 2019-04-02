@@ -7,15 +7,16 @@ static WAVEHDR* allocateBufferMemory();
 static void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size);
 static void CALLBACK waveOutProc(HWAVEOUT, UINT, DWORD, DWORD, DWORD);
 
-static volatile int waveFreeBlockCount;
-static int waveCurrentBlock;
-static CRITICAL_SECTION mutex;
-static WAVEHDR* chunkBuffer;
+static volatile int			waveFreeBlockCount;
+static int					waveCurrentBlock;
+static CRITICAL_SECTION		mutex;
+static WAVEHDR*				chunkBuffer;
 
-struct ip_mreq stMreq;
-SOCKADDR_IN lclAddr, srcAddr;
-LPSOCKET_INFORMATION SI;
-
+struct ip_mreq				stMreq;
+SOCKADDR_IN					lclAddr, srcAddr;
+LPSOCKET_INFORMATION		SI;
+HANDLE						pb_print_thread;
+DWORD						thread_print_id;
 
 static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
 {
@@ -320,7 +321,7 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 --			any incoming datagrams through overlapped and completion routine IO.
 --			When a datagram is received, it will be read and process.
 ----------------------------------------------------------------------------------------------------------------------*/
-void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
+void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 {
 	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
 		OutputDebugString("GlobalAlloc() failed\n");
@@ -369,9 +370,18 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 		ExitProcess(10);
 	}
 
+	pb_print_thread = CreateThread(NULL, 0, printSoundProgress, (LPVOID)hwnd, 0, NULL);
+
+	discBool = false;
+
 	while (TRUE) {
 		int addr_size = sizeof(struct sockaddr_in);
 
+		if (!discBool) {
+			OutputDebugString("Disconnect clicked (client)");
+			break;
+		}
+		
 		if (WSARecvFrom(*sock, &(SI->DataBuf), 1, NULL, &flags, (SOCKADDR *)& srcAddr, &addr_size, &SI->Overlapped, completeCallback) != 0) {
 			if (WSAGetLastError() != WSA_IO_PENDING) {
 				OutputDebugString("IO ERROR \n error no ");
@@ -390,7 +400,7 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 				closesocket(*sock);
 				GlobalFree(SI);
 				WSACleanup();
-				exit(1);
+				return;
 			}
 		}
 
@@ -402,7 +412,13 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 
 	//wait for sound to finish playing
 	while (waveFreeBlockCount < CHUNK_NUM) {
-		Sleep(10);
+		auto start = std::clock();
+		while ((std::clock() - start) != 10) {
+
+		}
+
+		//auto end = std::chrono::system_clock::now();
+		//Sleep(10);
 	}
 
 	//unprepare all chunks
