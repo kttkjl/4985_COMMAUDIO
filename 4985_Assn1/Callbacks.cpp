@@ -52,7 +52,7 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 		closesocket(SI->Socket);
 		return;
 	}
-	//ZeroMemory(&Overlapped, sizeof(WSAOVERLAPPED));
+
 	// Print stats
 	char cstr[DATA_BUF_SIZE];
 	sprintf(cstr, "BytesSent'd: %d\n", BytesTransferred);
@@ -89,12 +89,8 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 void CALLBACK completeCallback(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags) {
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(lpOverlapped->hEvent);
 
-	// Print stats
 	char cstr[AUD_BUF_SIZE];
 	SI->BytesRECV = countActualBytes(SI->DataBuf.buf, cbTransferred);
-	sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
+	//sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
 	SI->totalBytesTransferred += SI->BytesRECV;
-	OutputDebugString(SI->Buffer);
-	OutputDebugString(cstr);
-	
 }

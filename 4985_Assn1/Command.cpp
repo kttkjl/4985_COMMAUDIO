@@ -53,8 +53,7 @@ static TCHAR CmdModName[] = TEXT("Lolicon Radio 498.5FM");
 HWND cmdhwnd; // Window handler for main window
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
-INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-void printScreen(HWND hwnd, char *buffer);
+//INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 // Query params, along with file
 QueryParams serverTCPParams;
@@ -68,6 +67,7 @@ int buflen;
 
 // Custom functions
 int runUdpLoop(SOCKET s, bool upload);
+void printScreen(HWND hwnd, char *buffer);
 
 // Thread functions
 DWORD WINAPI runTCPthread(LPVOID upload);
@@ -296,8 +296,8 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 	SI->DataBuf.len = PACKET_SIZE;
 
 	FILE *fp;
-	char songname[128]{ "song.wav" };
-	//char songname[128]{ "./Library/Faded.wav" };
+	//char songname[128]{ "song.wav" };
+	char songname[128]{ "./Library/Faded.wav" };
 	char nowplaying[128]{ "Now Playing: " };
 	char errormsg[128]{ "Broadcast error" };
 	char broadcastdone[128]{ "Broadcast ended" };

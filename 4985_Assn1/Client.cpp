@@ -376,9 +376,9 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 
 	while (TRUE) {
 		int addr_size = sizeof(struct sockaddr_in);
-
-		if (!discBool) {
-			OutputDebugString("Disconnect clicked (client)");
+		OutputDebugString("here\n");
+		if (discBool) {
+			OutputDebugString("Disconnect clicked (client)\n");
 			break;
 		}
 		
@@ -412,13 +412,31 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 
 	//wait for sound to finish playing
 	while (waveFreeBlockCount < CHUNK_NUM) {
-		auto start = std::clock();
-		while ((std::clock() - start) != 10) {
-
-		}
+		/*auto start = std::clock();
+		while ((std::clock() - start) != 10) { }*/
 
 		//auto end = std::chrono::system_clock::now();
 		//Sleep(10);
+	}
+
+	if (discBool) {
+		//audio clean up
+		DeleteCriticalSection(&mutex);
+		HeapFree(GetProcessHeap(), 0, chunkBuffer);
+		waveOutClose(hWaveOut);
+
+		stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
+		stMreq.imr_interface.s_addr = INADDR_ANY;
+		if (setsockopt(*sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
+			printf("setsockopt() IP_DROP_MEMBERSHIP address %s failed, Err: %d\n",
+				qp->addrStr, WSAGetLastError());
+		}
+
+		closesocket(*sock);
+
+		/* Tell WinSock we're leaving */
+		WSACleanup();
+		return;
 	}
 
 	//unprepare all chunks
