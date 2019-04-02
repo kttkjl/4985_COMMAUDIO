@@ -46,14 +46,11 @@
 #include "command.h"
 #include "Client.h"
 
-#define TOTAL_TIMEOUT 5000
 #define PACKET_SIZE 8192
 
-static TCHAR CmdModName[] = TEXT("Lolicon Radio 498.5FM");
+static TCHAR CmdModName[] = TEXT("Team6 CommAudio");
 HWND cmdhwnd; // Window handler for main window
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-
-//INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 
 // Query params, along with file
 QueryParams serverTCPParams;
@@ -94,10 +91,6 @@ HANDLE  h_thread_accept; //Throw this into array for multiple clients
 DWORD Flags;
 DWORD RecvBytes;
 
-// Transfer statistics
-//std::chrono::time_point<std::chrono::high_resolution_clock> start;
-//std::chrono::time_point<std::chrono::high_resolution_clock> end;
-
 // Text metrics for printing to screen
 TEXTMETRIC tm;
 int xPosition;
@@ -132,20 +125,24 @@ int libindex = -1;
 int setupTCPSrv() {
 	int err;
 	if (serverTCPParams.portStr[0] == '\0') {
+		OutputDebugString("TCP port empty\n");
 		return 2;
 	}
 	if (serverTCPParams.packetSizeStr[0] == '\0') {
+		OutputDebugString("Packet size empty\n");
 		return 3;
 	}
 	// Startup
 	if ((err = WSAStartup(0x0202, &WSAData)) != 0) //No usable DLL
 	{
-		exit(err);
+		OutputDebugString(convertErrString("WSAStartup error:", err));
+		return (err);
 	}
 	// Create Socket
 	if ((ListenSocket = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
 	{
-		exit(600);
+		OutputDebugString(convertErrString("ListenSocket error:", WSAGetLastError()));
+		return (600);
 	}
 
 	// Bind socket
@@ -154,8 +151,8 @@ int setupTCPSrv() {
 	serverTCP.sin_port = htons(atoi(serverTCPParams.portStr));
 	if (bind(ListenSocket, (PSOCKADDR)&serverTCP, sizeof(serverTCP)) == SOCKET_ERROR)
 	{
-		printf("bind() failed with error %d\n", WSAGetLastError());
-		return (601);
+		OutputDebugString(convertErrString("bind() failed with error\n", WSAGetLastError()));
+		return 601;
 	}
 
 
@@ -187,25 +184,27 @@ int setupUDPSrv() {
 	int err;
 	// Check port
 	if (serverUDPParams.portStr[0] == '\0') {
-		OutputDebugString("UDP port error");
+		OutputDebugString("UDP port empty\n");
 		return 2;
 	}
 
 	// check address
 	if (serverUDPParams.addrStr[0] == '\0') {
-		OutputDebugString("UDP addr error");
+		OutputDebugString("Multicast addr empty\n");
 		return 4;
 	}
 
 	// Startup
 	if ((err = WSAStartup(0x0202, &WSAData)) != 0) //No usable DLL
 	{
-		exit(err);
+		OutputDebugString(convertErrString("WSAStartup error:", err));
+		return (err);
 	}
 	// Create Socket
 	if ((ListenSocket = socket(AF_INET, SOCK_DGRAM, 0)) == INVALID_SOCKET)
 	{
-		exit(600);
+		OutputDebugString(convertErrString("ListenSocket error:", WSAGetLastError()));
+		return 600;
 	}
 
 	// Bind the socket
@@ -216,7 +215,7 @@ int setupUDPSrv() {
 	// Bind Listen socket to Internet Addr, basically let system auto-config
 	if (bind(ListenSocket, (PSOCKADDR)&serverUDP, sizeof(serverUDP)) == SOCKET_ERROR)
 	{
-		printf("bind() failed with error %d\n", WSAGetLastError());
+		OutputDebugString(convertErrString("bind() failed with error\n", WSAGetLastError()));
 		return (601);
 	}
 
@@ -226,23 +225,19 @@ int setupUDPSrv() {
 	stMreq.imr_interface.s_addr = INADDR_ANY;
 
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
-		printf("setsockopt() IP_ADD_MEMBERSHIP address %s failed, Err: %d\n",
-			serverUDPParams.addrStr, WSAGetLastError());
-		OutputDebugString("setsockopt() IP_ADD_MEMBERSHIP address\n");
+		OutputDebugString(convertErrString("setsockopt() IP_ADD_MEMBERSHIP address:\n", WSAGetLastError()));
 		return 800;
 	}
 
 	lTTL = 1; // default time to live
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_MULTICAST_TTL, (char *)&lTTL, sizeof(lTTL)) == SOCKET_ERROR) {
-		printf("setsockopt() IP_MULTICAST_TTL failed, Err: %d\n",
-			WSAGetLastError());
+		OutputDebugString(convertErrString("setsockopt() IP_MULTICAST_TTL failed, Err:", WSAGetLastError()));
 	}
 
 	// Doesn't send to itself in the multicast
 	BOOL fFlag = FALSE;
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&fFlag, sizeof(fFlag)) == SOCKET_ERROR) {
-		printf("setsockopt() IP_MULTICAST_LOOP failed, Err: %d\n",
-			WSAGetLastError());
+		OutputDebugString(convertErrString("setsockopt() IP_MULTICAST_LOOP failed, Err:", WSAGetLastError()));
 	}
 
 	clientUDP.sin_family = AF_INET;
@@ -285,19 +280,14 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 	DWORD Flags = 0;
 	int counter = 0;
-	char test[128]{ "Broadcasting." };
-	char test2[128]{ "Broadcasting.." };
-	char test3[128]{ "Broadcasting..." };
-	char * testArr[3] = { test, test2, test3 };
-	char buf[128]{ "Broadcasting." };
 	int addr_size = sizeof(struct sockaddr_in);
 	char buffer[AUD_BUF_SIZE]; // buffer to read .wav file
 
 	SI->DataBuf.len = PACKET_SIZE;
 
 	FILE *fp;
-	//char songname[128]{ "song.wav" };
-	char songname[128]{ "./Library/Faded.wav" };
+	char songname[128]{ "song.wav" };
+	//char songname[128]{ "./Library/Faded.wav" };
 	char nowplaying[128]{ "Now Playing: " };
 	char errormsg[128]{ "Broadcast error" };
 	char broadcastdone[128]{ "Broadcast ended" };
@@ -328,14 +318,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 		SI->DataBuf.buf = &buffer[0];
 
 		if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *) & clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
-			printf("WSASendTo() failed, Error: %d\n", WSAGetLastError());
-
-			wipeScreen(cmdhwnd);
-			printScreen(cmdhwnd, broadcastdone);
-			//temporary debug statement
-			char err[20];
-			_itoa(WSAGetLastError(), err, 10);
-			OutputDebugString(err);
+			OutputDebugString(convertErrString("WSASendTo() failed, Error: %d\n", WSAGetLastError()));
 
 			return 1;
 		}
@@ -350,7 +333,9 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 		}
 
 		//throttle send frequency to prevent client buffer overflow
-		Sleep(20);
+		//Sleep(20);
+		auto start = std::clock();
+		while ((std::clock() - start) != 20 && !discBool) { }
 	}
 
 	OutputDebugString("Leaving Multicast server\n");

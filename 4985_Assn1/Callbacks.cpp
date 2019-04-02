@@ -8,7 +8,6 @@ void set_hwnd(HWND h)
 }
 
 void CALLBACK recvFileReqCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags) {
-	// Black magic fuckery here
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(Overlapped->hEvent);
 
 	if (Error != 0 || BytesTransferred == 0)
