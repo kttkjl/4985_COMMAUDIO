@@ -166,16 +166,15 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 		}
 	}
 	// Setup to save file
-	std::ofstream out_file;
 	char buff[20];
 	auto time = std::chrono::system_clock::now();
 	std::time_t time_c = std::chrono::system_clock::to_time_t(time);
 	auto time_tm = *std::localtime(&time_c);
 	strftime(buff, sizeof(buff), "%F-%H%M%S", &time_tm);
 	std::string fn = buff;
-
+	fn += ".wav";
 	FILE *fp;
-	fp = fopen("song.wav", "wb");
+	fp = fopen(fn.c_str(), "wb");
 	
 	// Setup Read params
 	int bytesToRead = DATA_BUF_SIZE;
@@ -197,16 +196,16 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 				// Reset
 				closesocket(*sock);
 				GlobalFree(SI);
-				out_file.close();
+				fclose(fp);
 				return 1;
 			}
 		}
 		//OutputDebugString("SleepEX reached cln\n");
 		SleepEx(INFINITE, TRUE);
 
-
 		DWORD readBytes;
 		readBytes = fwrite(SI->DataBuf.buf, sizeof(char), SI->BytesRECV, fp);
+		SI->BytesRECV = 0;
 		memset(SI->Buffer, 0, DATA_BUF_SIZE);
 	}
 

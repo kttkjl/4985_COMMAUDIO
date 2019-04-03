@@ -891,8 +891,8 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	SocketInfo->totalBytesTransferred = 0;
 	// Wait for Client
 	// SocketInfo population
-	//SocketInfo->Buffer = (char *)malloc(DATA_BUF_SIZE);
-	//memset(SocketInfo->Buffer, 0, sizeof(char) * DATA_BUF_SIZE);
+	SocketInfo->Buffer = (char *)malloc(DATA_BUF_SIZE);
+	memset(SocketInfo->Buffer, 0, sizeof(char) * DATA_BUF_SIZE);
 	SocketInfo->DataBuf.len = DATA_BUF_SIZE;
 	SocketInfo->DataBuf.buf = SocketInfo->Buffer;
 	SocketInfo->Socket = (SOCKET)acceptSocket;
@@ -907,10 +907,10 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	{
 		if (WSAGetLastError() != WSA_IO_PENDING)
 		{
-			OutputDebugString("PostSleep WSA Fail, client prob disconnected\n");
 			char cstr[DATA_BUF_SIZE];
 			char cr[1]{ '\r' };
-			sprintf(cstr, "TotalBytes recv'd: %d\n", SocketInfo->totalBytesTransferred);
+			sprintf(cstr, "Recv filename failed: %d", WSAGetLastError());
+			OutputDebugString(convertErrString("Recv filename failed: ", WSAGetLastError()));
 			printScreen(cmdhwnd, cstr);
 			printScreen(cmdhwnd, cr);
 			OutputDebugString(cstr);
@@ -942,57 +942,55 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	//memset(SocketInfo->Buffer, 0, DATA_BUF_SIZE);
 
 	// Send loop, probably
-	char ch;
-	int bufInd = 0;
 	DWORD readBytes;
 	char sendBuffer[PACKET_SIZE];
 	while ((readBytes = fread(sendBuffer, sizeof(char), sizeof(sendBuffer), fptr)) >0) {
-
 		SocketInfo->DataBuf.buf = &sendBuffer[0];
-			SocketInfo->DataBuf.len = PACKET_SIZE;
-			// Buffer filled, gotta send whole buffer
-			while (SocketInfo->BytesWRITTEN < DATA_BUF_SIZE) {
-				// Not all sent
-				if (WSASend((SOCKET)acceptSocket, &(SocketInfo->DataBuf), 1, NULL, Flags, &(SocketInfo->Overlapped), srvSentFileCallback) == SOCKET_ERROR) {
-					int last_err = WSAGetLastError();
-					if (!(last_err == WSA_IO_PENDING || last_err == WSAEWOULDBLOCK))
-					{
-						printScreen(cmdhwnd, convertErrString("WSASend failed, not IO_PENDING or WOUDLBLOCK", WSAGetLastError()));
-						return 1;
-					}
+		SocketInfo->DataBuf.len = PACKET_SIZE;
+		// Buffer filled, gotta send whole buffer
+		while (SocketInfo->BytesWRITTEN < DATA_BUF_SIZE) {
+			// Not all sent
+			if (WSASend((SOCKET)acceptSocket, &(SocketInfo->DataBuf), 1, NULL, Flags, &(SocketInfo->Overlapped), srvSentFileCallback) == SOCKET_ERROR) {
+				int last_err = WSAGetLastError();
+				if (!(last_err == WSA_IO_PENDING || last_err == WSAEWOULDBLOCK))
+				{
+					printScreen(cmdhwnd, convertErrString("WSASend failed, not IO_PENDING or WOUDLBLOCK", WSAGetLastError()));
+					return 1;
 				}
-				SleepEx(INFINITE, TRUE);
 			}
-			// All sent
-			memset(SocketInfo->Buffer, 0, sizeof(SocketInfo->Buffer));
-			SocketInfo->BytesWRITTEN = 0;
-			bufInd = 0;
-		
+			SleepEx(INFINITE, TRUE);
+		}
+		// All sent
+		memset(SocketInfo->Buffer, 0, sizeof(SocketInfo->Buffer));
+		SocketInfo->BytesWRITTEN = 0;
 	}
 	// Show progress of final
 	char pstr[128];
+	char totalSentStr[128];
 	char cr[1]{ '\r' };
-	char sentmsg[128]{ " sent to client" };
-	sprintf(pstr, "Last buffer index: %d\n", bufInd);
-	SocketInfo->DataBuf.len = bufInd;
 
+	OutputDebugString(convertErrString("final readBytes:", readBytes));
+	SocketInfo->DataBuf.len = readBytes;
 	//Send last thing
-	if (WSASend((SOCKET)acceptSocket, &(SocketInfo->DataBuf), 1, NULL, Flags, &(SocketInfo->Overlapped), srvSentFileCallback) == SOCKET_ERROR)
-	{
-		int last_err = WSAGetLastError();
-		if (!(last_err == WSA_IO_PENDING || last_err == WSAEWOULDBLOCK))
-		{
-			OutputDebugString("WSASend failed, not WOULDBLOCK\n");
-			return 1;
-		}
-	}
-	SleepEx(INFINITE, TRUE);
+	//if (WSASend((SOCKET)acceptSocket, &(SocketInfo->DataBuf), 1, NULL, Flags, &(SocketInfo->Overlapped), srvSentFileCallback) == SOCKET_ERROR)
+	//{
+	//	int last_err = WSAGetLastError();
+	//	if (!(last_err == WSA_IO_PENDING || last_err == WSAEWOULDBLOCK))
+	//	{
+	//		OutputDebugString("WSASend failed, not WOULDBLOCK\n");
+	//		return 1;
+	//	}
+	//}
+	//SleepEx(INFINITE, TRUE);
 
 	char cstr[DATA_BUF_SIZE];
 	sprintf(cstr, "Total Bytes Sent'd: %d\n", SocketInfo->totalBytesTransferred);
 	OutputDebugString(cstr);
 
 	printScreen(cmdhwnd, filename);
+	//Print final sent stats
+	sprintf(totalSentStr, "Total sent: %lu\n", SocketInfo->totalBytesTransferred);
+	printScreen(cmdhwnd, totalSentStr);
 	printScreen(cmdhwnd, cr);
 
 	closesocket(SocketInfo->Socket);
