@@ -287,61 +287,77 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 	FILE *fp;
 	//char songname[128]{ "song.wav" };
-	char songname[128]{ "./Library/Faded.wav" };
-	char nowplaying[128]{ "Now Playing: " };
+	//char songname[128]{ "./Library/Faded.wav" };
+	int isong = 0;
+	char songname[128];
+	strcpy(songname, library[isong].c_str());
+	char nowplaying[128]{ "Now Broadcasting: " };
 	char errormsg[128]{ "Broadcast error" };
-	char broadcastdone[128]{ "Broadcast ended" };
+	char broadcastdone[128]{ "Broadcast over" };
 	fp = fopen(songname, "rb");
 
 	discBool = false;
 
-	while (TRUE) {
-		if (discBool) {
-			OutputDebugString("Disconnect clicked\n");
-			break;
-		}
-
-		DWORD readBytes;
-		readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
-
-		if (readBytes == 0) {
-			OutputDebugString("Done sending\n");
-			break;
-		}
-				
-		//empty unloaded space in buffer if buffer isn't full
-		if (readBytes < sizeof(buffer)) {
-
-			memset(buffer + readBytes, 0, sizeof(buffer) - readBytes);
-		}
-
-		SI->DataBuf.buf = &buffer[0];
-
-		if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *) & clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
-			OutputDebugString(convertErrString("WSASendTo() failed, Error:", WSAGetLastError()));
-
-			return 1;
-		}
-		else {
-			++counter;
-			if (counter == 1) {
-				set_print_x(380);
-				set_print_y(200);
-				printScreen(cmdhwnd, nowplaying);
-				printScreen(cmdhwnd, songname);
+	if (libindex != -1) {
+		while (TRUE) {
+			if (discBool) {
+				OutputDebugString("Disconnect clicked\n");
+				break;
 			}
-		}
 
-		//throttle send frequency to prevent client buffer overflow
-		//Sleep(20);
+			DWORD readBytes;
+			readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
 
-		std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
-		std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
-		std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+			if (readBytes == 0) {
+				if (isong == libindex) {
+					OutputDebugString("Done sending\n");
+					break;
+				}
+				else {
+					++isong;
+					counter = 0;
+					memset(songname, 0, sizeof(songname));
+					strcpy(songname, library[isong].c_str());
 
-		while (time_span.count() <= 0.02) {
-			end = std::chrono::high_resolution_clock::now();
-			time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+					fp = fopen(songname, "rb");
+					readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
+				}
+			}
+
+			//empty unloaded space in buffer if buffer isn't full
+			if (readBytes < sizeof(buffer)) {
+
+				memset(buffer + readBytes, 0, sizeof(buffer) - readBytes);
+			}
+
+			SI->DataBuf.buf = &buffer[0];
+
+			if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *)& clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
+				OutputDebugString(convertErrString("WSASendTo() failed, Error:", WSAGetLastError()));
+
+				return 1;
+			}
+			else {
+				++counter;
+				if (counter == 1) {
+					wipeScreen(cmdhwnd);
+					printLibrary(cmdhwnd);
+					set_print_x(380);
+					set_print_y(200);
+					printScreen(cmdhwnd, nowplaying);
+					printScreen(cmdhwnd, songname);
+				}
+			}
+
+			//throttle send frequency to prevent client buffer overflow
+			std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+
+			while (time_span.count() <= 0.02) {
+				end = std::chrono::high_resolution_clock::now();
+				time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+			}
 		}
 	}
 
@@ -423,7 +439,6 @@ void wipeScreen(HWND hwnd) {
 	xPosition = 0;
 	yPosition = 0;
 	HDC textScreen = GetDC(hwnd);
-	//HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0));
 	Rectangle(textScreen, -1, -1, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
 }
 
@@ -497,7 +512,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			clearInputs(&clientTgtParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_QUERY_FILE), hwnd, HandleClnQuery);
 			if (clientTgtParams.stream) {
-				if (setupOneToOne())
+				//if (setupOneToOne())
 			}
 			else {
 				if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
@@ -1010,13 +1025,10 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 DWORD WINAPI runUDPthread(LPVOID upload) {
 	printLibrary(cmdhwnd);
 	while (1) {
-		if (runUdpLoop(ListenSocket, (BOOL)upload) == 1) {
+		if (runUdpLoop(ListenSocket, (BOOL)upload) == 1 || libindex == -1) {
 			OutputDebugString("runUDPthread exit\n");
 			break;
 		}
-		/*else if (check if there are other songs){
-
-		}*/
 	}
 	doneplaying = true;
 	return 200;
@@ -1072,7 +1084,8 @@ void printLibrary(HWND h) {
 
 	Rectangle(textScreen, 5, 5, 175, 530);
 
-	strcpy(szDir, "./");
+	//strcpy(szDir, "./");
+	strcpy(szDir, "../x64/Release/Library");
 	//strcpy(szDir, "./Library");
 	strcat(szDir, "\\*");
 

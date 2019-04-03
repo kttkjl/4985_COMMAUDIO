@@ -327,8 +327,6 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 		exit(1);
 	}
 
-	set_hwnd(hwnd);
-
 	HWAVEOUT hWaveOut;
 	WAVEFORMATEX wfx;
 
@@ -370,7 +368,6 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 		ExitProcess(10);
 	}
 
-	discBool = false;
 
 	while (TRUE) {
 		int addr_size = sizeof(struct sockaddr_in);
@@ -397,18 +394,17 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 			}
 		}
 
-		SetTimer(hwnd, IDT_TIMER, 10000, (TIMERPROC)NULL);
+		//SetTimer(hwnd, IDT_TIMER, 10000, (TIMERPROC)NULL);
 		//SetTimer(hwnd, IDT_TIMER2, 10000, TimerProc);
-		if (discBool) break;
+		//if (discBool) break;
 		SleepEx(INFINITE, TRUE);
-		KillTimer(hwnd, IDT_TIMER);
+		//KillTimer(hwnd, IDT_TIMER);
 		//KillTimer(hwnd, IDT_TIMER2);
 
 		addtoBufferAndPlay(hWaveOut, SI->DataBuf.buf, SI->DataBuf.len);
 
 	} // end of infinite loop
 
-	OutputDebugString("hisfsdfsfsfsfsfsd");
 	//wait for sound to finish playing
 	while (waveFreeBlockCount < CHUNK_NUM) {
 		/*auto start = std::clock();
