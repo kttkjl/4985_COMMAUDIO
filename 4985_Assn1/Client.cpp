@@ -210,6 +210,7 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 
 		DWORD readBytes;
 		readBytes = fwrite(SI->DataBuf.buf, sizeof(char), SI->BytesRECV, fp);
+		SI->BytesRECV = 0;
 		memset(SI->Buffer, 0, DATA_BUF_SIZE);
 
 		//// calc
