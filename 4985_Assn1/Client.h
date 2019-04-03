@@ -15,8 +15,9 @@
 #include "Callbacks.h"
 #include "command.h"
 
-
 int setupTCPCln(LPQueryParams, SOCKET *, WSADATA *, SOCKADDR_IN *);
 int setupUDPCln(LPQueryParams, SOCKET *, WSADATA *);
 int requestTCPFile(SOCKET * , SOCKADDR_IN *, const char *);
-void joiningStream(LPQueryParams, SOCKET *, HWND);
+void joiningStream(LPQueryParams, SOCKET *, HWND, bool *);
+
+//void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);

@@ -7,15 +7,15 @@ static WAVEHDR* allocateBufferMemory();
 static void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size);
 static void CALLBACK waveOutProc(HWAVEOUT, UINT, DWORD, DWORD, DWORD);
 
-static volatile int waveFreeBlockCount;
-static int waveCurrentBlock;
-static CRITICAL_SECTION mutex;
-static WAVEHDR* chunkBuffer;
+static volatile int			waveFreeBlockCount;
+static int					waveCurrentBlock;
+static CRITICAL_SECTION		mutex;
+static WAVEHDR*				chunkBuffer;
 
-struct ip_mreq stMreq;
-SOCKADDR_IN lclAddr, srcAddr;
-LPSOCKET_INFORMATION SI;
-
+struct ip_mreq				stMreq;
+SOCKADDR_IN					lclAddr, srcAddr;
+LPSOCKET_INFORMATION		SI;
+SOCKET *					s_sock;
 
 static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
 {
@@ -51,8 +51,6 @@ WAVEHDR* allocateBufferMemory()
 
 	return chunks;
 }
-
-
 
 void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size)
 {
@@ -177,8 +175,6 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 	fn += ".wav";
 	FILE *fp;
 	fp = fopen(fn.c_str(), "wb");
-
-	//out_file.open(fn + ".txt");
 	
 	// Setup Read params
 	int bytesToRead = DATA_BUF_SIZE;
@@ -193,7 +189,6 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 				// Get last thing in buffer
 				char temp_buf[DATA_BUF_SIZE]{ 0 };
 				memcpy(temp_buf, SI->Buffer, SI->BytesRECV);
-				//out_file.write(temp_buf, SI->BytesRECV);
 				// Debug stats
 				char cstr[256];
 				sprintf(cstr, "Total Bytes Recv'd: %d\n", SI->totalBytesTransferred);
@@ -212,31 +207,6 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 		readBytes = fwrite(SI->DataBuf.buf, sizeof(char), SI->BytesRECV, fp);
 		SI->BytesRECV = 0;
 		memset(SI->Buffer, 0, DATA_BUF_SIZE);
-
-		//// calc
-		//bytestoread = bytestoread - si->bytesrecv;
-		//// save current read buffer
-		//for (int i = 0; i < si->bytesrecv; ++i) {
-		//	packet_buf[chars_written] = si->buffer[i];
-		//	chars_written++;
-		//}
-
-		//if (bytestoread == 0) {
-		//	// full packet get, write to file
-		//	out_file.write(packet_buf, data_buf_size);
-		//	// reset bytestoread and bytesrecv
-		//	memset(si->buffer, '\0', data_buf_size);
-		//	bytestoread = data_buf_size;
-		//	si->bytesrecv = 0;
-		//	si->databuf.len = data_buf_size;
-		//	// temp buffer reset
-		//	chars_written = 0;
-		//	memset(packet_buf, '\0', data_buf_size);
-		//} else {
-		//	// more to read, call another read again
-		//	si->databuf.len = si->databuf.len - si->bytesrecv;
-		//	bytestoread = si->databuf.len;
-		//}
 	}
 
 	return 0;
@@ -283,7 +253,6 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 	// Initialize Winsock
 	if ((err = WSAStartup(0x0202, wsaData)) != 0) //No usable DLL
 	{
-		//printf("DLL not found!\n");
 		return err;
 	}
 
@@ -350,7 +319,7 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 --			any incoming datagrams through overlapped and completion routine IO.
 --			When a datagram is received, it will be read and process.
 ----------------------------------------------------------------------------------------------------------------------*/
-void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
+void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 {
 	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
 		OutputDebugString("GlobalAlloc() failed\n");
@@ -362,6 +331,7 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 
 	int err;
 	DWORD flags = 0;
+	s_sock = sock;
 	SI->Buffer = (char *)malloc(AUD_BUF_SIZE);
 	memset(SI->Buffer, 0, sizeof(SI->Buffer));
 	SI->DataBuf.buf = SI->Buffer;
@@ -397,12 +367,6 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 		ExitProcess(10);
 	}
 
-	//save to file
-	//FILE *fp;
-	//fp = fopen("recv.wav", "wb");
-	//fclose(fp);
-	//fp = fopen("recv.wav", "ab");
-
 
 	while (TRUE) {
 		int addr_size = sizeof(struct sockaddr_in);
@@ -425,52 +389,28 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 				closesocket(*sock);
 				GlobalFree(SI);
 				WSACleanup();
-				exit(1);
+				return;
 			}
 		}
 
+		//SetTimer(hwnd, IDT_TIMER, 10000, (TIMERPROC)NULL);
+		//SetTimer(hwnd, IDT_TIMER2, 10000, TimerProc);
+		//if (discBool) break;
 		SleepEx(INFINITE, TRUE);
-
-		//save to file
-		//fwrite(SI->DataBuf.buf, sizeof(char), SI->DataBuf.len, fp);
+		//KillTimer(hwnd, IDT_TIMER);
+		//KillTimer(hwnd, IDT_TIMER2);
 
 		addtoBufferAndPlay(hWaveOut, SI->DataBuf.buf, SI->DataBuf.len);
 
-		//// Calc
-		//bytesToRead = bytesToRead - SI->BytesRECV;
-		//// Save current read buffer
-		//for (int i = 0; i < SI->BytesRECV; ++i) {
-		//	packet_buf[chars_written] = SI->Buffer[i];
-		//	chars_written++;
-		//}
-
-		//if (bytesToRead == 0) {
-		//	// Full packet get, Write to file
-		//	printScreen(hwnd, SI->Buffer);
-		//	// Reset BytesToRead and BytesRecv
-		//	memset(SI->Buffer, '\0', AUD_BUF_SIZE);
-		//	bytesToRead = AUD_BUF_SIZE;
-		//	SI->BytesRECV = 0;
-		//	SI->DataBuf.len = AUD_BUF_SIZE;
-		//	// Temp buffer reset
-		//	chars_written = 0;
-		//	memset(packet_buf, '\0', AUD_BUF_SIZE);
-		//}
-		//else {
-		//	// More to read, call another read again
-		//	SI->DataBuf.len = SI->DataBuf.len - SI->BytesRECV;
-		//	bytesToRead = SI->DataBuf.len;
-		//}
-
 	} // end of infinite loop
-
-
-	//save to file
-	//fclose(fp);
 
 	//wait for sound to finish playing
 	while (waveFreeBlockCount < CHUNK_NUM) {
-		Sleep(10);
+		/*auto start = std::clock();
+		while ((std::clock() - start) != 10) { }*/
+
+		//auto end = std::chrono::system_clock::now();
+		//Sleep(10);
 	}
 
 	//unprepare all chunks
@@ -497,4 +437,12 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 
 	/* Tell WinSock we're leaving */
 	WSACleanup();
+}
+
+void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
+	OutputDebugString("timerproc\n");
+	//TerminateThread(h_thread_accept, 200);
+	//closesocket(*s_sock);
+	//GlobalFree(SI);
+	//WSACleanup();
 }

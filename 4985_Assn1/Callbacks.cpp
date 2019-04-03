@@ -1,7 +1,13 @@
 #include "Callbacks.h"
 
+HWND hwnd;
+
+void set_hwnd(HWND h)
+{
+	hwnd = h;
+}
+
 void CALLBACK recvFileReqCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags) {
-	// Black magic fuckery here
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(Overlapped->hEvent);
 
 	if (Error != 0 || BytesTransferred == 0)
@@ -45,7 +51,7 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 		closesocket(SI->Socket);
 		return;
 	}
-	//ZeroMemory(&Overlapped, sizeof(WSAOVERLAPPED));
+
 	// Print stats
 	char cstr[DATA_BUF_SIZE];
 	sprintf(cstr, "BytesSent'd: %d\n", BytesTransferred);
@@ -82,11 +88,15 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 void CALLBACK completeCallback(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags) {
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(lpOverlapped->hEvent);
 
-	// Print stats
+	if (discBool)
+		return;
+
 	char cstr[AUD_BUF_SIZE];
 	SI->BytesRECV = countActualBytes(SI->DataBuf.buf, cbTransferred);
-	sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
+	//sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
 	SI->totalBytesTransferred += SI->BytesRECV;
-	OutputDebugString(SI->Buffer);
-	OutputDebugString(cstr);
 }
+
+//void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
+//
+//}

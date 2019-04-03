@@ -17,19 +17,14 @@
 	--	
 	--		void wipeScreen(HWND hwnd);
 	--		
-	--		void runTcpLoop(SOCKET s, bool upload);
-	--		
 	--		void runUdpLoop(SOCKET s, bool upload);
 	--		
 	--		int countActualBytes(char * buf, int len);
 	--	
 	--		DWORD WINAPI runTCPthread(LPVOID upload);
 	--		
-	--		DWORD WINAPI printTCPthread(LPVOID hwnd);
-	--		
 	--		DWORD WINAPI runUDPthread(LPVOID upload);
 	--		
-	--		DWORD WINAPI printUDPthread(LPVOID hwnd);
 	--	
 	--		INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 	--	
@@ -51,20 +46,13 @@
 #include "command.h"
 #include "Client.h"
 
-#define TOTAL_TIMEOUT 5000
-#define MAX_ACCEPT_CLIENTS 12
 #define PACKET_SIZE 8192
 
-static TCHAR CmdModName[] = TEXT("TCP/UDP Receiver");
-//HWND cmdhwnd; // Window handler for main window
+static TCHAR CmdModName[] = TEXT("Team6 CommAudio");
+HWND cmdhwnd; // Window handler for main window
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
-INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-void printScreen(HWND hwnd, char *buffer);
-
 // Query params, along with file
-char queryPortStr[INPUT_MAX_CHAR]{ '\0' };
-char queryPacketSizeStr[INPUT_MAX_CHAR]{ '\0' };
 QueryParams serverTCPParams;
 QueryParams serverUDPParams;
 QueryParams clientUDPParams;
@@ -74,28 +62,17 @@ QueryParams clientTgtParams;
 char * sbuf;
 int buflen;
 
-BOOL CreateSocketInformation(SOCKET s);
-void FreeSocketInformation(DWORD Event);
-
 // Custom functions
-void runTcpLoop(SOCKET s, bool upload);
 int runUdpLoop(SOCKET s, bool upload);
+void printScreen(HWND hwnd, char *buffer);
 
 // Thread functions
 DWORD WINAPI runTCPthread(LPVOID upload);
-DWORD WINAPI printTCPthread(LPVOID hwnd);
 DWORD WINAPI runUDPthread(LPVOID upload);
-DWORD WINAPI printUDPthread(LPVOID hwnd);
 DWORD WINAPI runAcceptThread(LPVOID acceptSocket);
 DWORD WINAPI runUDPRecvthread(LPVOID recv);
 
-DWORD EventTotal = 0;
-WSAEVENT				EventArray[WSA_MAXIMUM_WAIT_EVENTS];
-LPSOCKET_INFORMATION	SocketArray[WSA_MAXIMUM_WAIT_EVENTS];
-
 // WSA Events, only need write_event for now
-WSANETWORKEVENTS	NetworkEvents;
-DWORD				Event;
 SOCKET				ListenSocket;
 SOCKET				AcceptSocket;
 SOCKET				ClientSocket;
@@ -105,34 +82,14 @@ SOCKADDR_IN			serverTCP;
 SOCKADDR_IN			serverUDP;
 SOCKADDR_IN			clientUDP;
 
-// Print event
-HANDLE	print_evt;
 DWORD	thread_srv_id;
-DWORD	thread_print_id;
-
-DWORD	acceptedClients[MAX_ACCEPT_CLIENTS];
 DWORD	thread_accept_id; //Throw this into array for multiple clients
 
 HANDLE	h_thread_srv;
-HANDLE	h_thread_print;
-
-HANDLE	acceptedThreadHandles[MAX_ACCEPT_CLIENTS];
 HANDLE  h_thread_accept; //Throw this into array for multiple clients
 
 DWORD Flags;
 DWORD RecvBytes;
-
-// Transfer statistics
-unsigned long totalBytes = 0;
-unsigned int totalTime = 0;
-int expected_packets = 0;
-int recv_packets = 0;
-std::chrono::time_point<std::chrono::high_resolution_clock> start;
-std::chrono::time_point<std::chrono::high_resolution_clock> end;
-
-//unused right now
-char queryResult[MAXGETHOSTSTRUCT];
-char inputTextBuffer[INPUT_MAX_CHAR];
 
 // Text metrics for printing to screen
 TEXTMETRIC tm;
@@ -140,7 +97,9 @@ int xPosition;
 int yPosition;
 
 u_long lTTL;
-HWND cmdhwnd;
+bool doneplaying = false;
+std::string library[128];
+int libindex = -1;
 
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupTCPSrv
@@ -166,23 +125,25 @@ HWND cmdhwnd;
 int setupTCPSrv() {
 	int err;
 	if (serverTCPParams.portStr[0] == '\0') {
+		OutputDebugString("TCP port empty\n");
 		return 2;
 	}
 	if (serverTCPParams.packetSizeStr[0] == '\0') {
+		OutputDebugString("Packet size empty\n");
 		return 3;
 	}
 	// Startup
 	if ((err = WSAStartup(0x0202, &WSAData)) != 0) //No usable DLL
 	{
-		exit(err);
+		OutputDebugString(convertErrString("WSAStartup error:", err));
+		return (err);
 	}
 	// Create Socket
 	if ((ListenSocket = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
 	{
-		exit(600);
+		OutputDebugString(convertErrString("ListenSocket error:", WSAGetLastError()));
+		return (600);
 	}
-
-	//CreateSocketInformation(ListenSocket);
 
 	// Bind socket
 	serverTCP.sin_family = AF_INET;
@@ -190,218 +151,12 @@ int setupTCPSrv() {
 	serverTCP.sin_port = htons(atoi(serverTCPParams.portStr));
 	if (bind(ListenSocket, (PSOCKADDR)&serverTCP, sizeof(serverTCP)) == SOCKET_ERROR)
 	{
-		printf("bind() failed with error %d\n", WSAGetLastError());
-		return (601);
+		OutputDebugString(convertErrString("bind() failed with error\n", WSAGetLastError()));
+		return 601;
 	}
 
 
 	return 0;
-}
-
-/*------------------------------------------------------------------------------------------------------------------
---    FUNCTION: runTcpLoop
---
---    DATE : FEB 08, 2019
---
---    REVISIONS :
---    		(FEB 08, 2019): Created
---
---    DESIGNER : Jacky Li
---
---    PROGRAMMER : Jacky Li
---
---    INTERFACE : void runTcpLoop(SOCKET Listen, bool upload)
---			SOCKET Listen:		The socket which this function will setup and listen on
---			bool upload:		Whether or not to have the listener server save the file
---
---    RETURNS : void
---
---    NOTES :
---			Runs the loop to listen onto the TCP port specified by the windows GUI, continues to run until program
---			ends, only 1 client allowed at any given moment.
---			Exits the entire program if any of the process in setting up is unsuccessful
-----------------------------------------------------------------------------------------------------------------------*/
-void runTcpLoopOld(SOCKET Listen, bool upload) {
-	if (WSAEventSelect(Listen, EventArray[EventTotal - 1], FD_ACCEPT | FD_CLOSE) == SOCKET_ERROR)
-	{
-		OutputDebugString(convertErrString("WSAEventSelect() failed with error", WSAGetLastError()));
-		return;
-	}
-	// Variables
-	std::ofstream out_file;
-
-	// listen to the port, error check
-	if (listen(Listen, SOMAXCONN) == SOCKET_ERROR)
-	{
-		OutputDebugString(convertErrString("listen() failed with error", WSAGetLastError()));
-		return;
-	}
-
-	// Main loop: wait for multiple events
-	while (TRUE)
-	{
-		// Wait for the overlapped I/O call to complete - forever
-		if ((Event = WSAWaitForMultipleEvents(EventTotal, EventArray, FALSE, WSA_INFINITE, FALSE)) == WSA_WAIT_FAILED)
-		{
-			printf("WSAWaitForMultipleEvents failed with error %d\n", WSAGetLastError());
-			return;
-		}
-
-		// WSAEnumNetworkEvents only reports network activity and errors nominated through WSAEventSelect.
-		// return value of WSAWaitMultEvt minus WSA_WAIT_EVENT_0 indicates the index of the event object whose state caused the function to return. 
-		if (WSAEnumNetworkEvents(SocketArray[Event - WSA_WAIT_EVENT_0]->Socket, EventArray[Event - WSA_WAIT_EVENT_0], &NetworkEvents) == SOCKET_ERROR)
-		{
-			printf("WSAEnumNetworkEvents failed with error %d\n", WSAGetLastError());
-			return;
-		}
-
-		// If FD_ACCEPT EVENT
-		if (NetworkEvents.lNetworkEvents & FD_ACCEPT)
-		{
-			if (NetworkEvents.iErrorCode[FD_ACCEPT_BIT] != 0)
-			{
-				printf("FD_ACCEPT failed with error %d\n", NetworkEvents.iErrorCode[FD_ACCEPT_BIT]);
-				break;
-			}
-
-			if ((AcceptSocket = accept(SocketArray[Event - WSA_WAIT_EVENT_0]->Socket, NULL, NULL)) == INVALID_SOCKET)
-			{
-				printf("accept() failed with error %d\n", WSAGetLastError());
-				break;
-			}
-
-			if (EventTotal > WSA_MAXIMUM_WAIT_EVENTS)
-			{
-				printf("Too many connections - closing socket.\n");
-				closesocket(AcceptSocket);
-				break;
-			}
-
-			// Create threads to handle client here? OPTIONAL
-
-			CreateSocketInformation(AcceptSocket);
-
-			if (WSAEventSelect(AcceptSocket, EventArray[EventTotal - 1], FD_READ | FD_WRITE | FD_CLOSE) == SOCKET_ERROR)
-			{
-				printf("WSAEventSelect() failed with error %d\n", WSAGetLastError());
-				return;
-			}
-
-			// ==== Finally connected ====
-			totalBytes = 0;
-			start = std::chrono::high_resolution_clock::now();
-
-			// Upload file option selected
-			if (upload) {
-				// unique filename
-				char buff[20];
-				auto time = std::chrono::system_clock::now();
-				std::time_t time_c = std::chrono::system_clock::to_time_t(time);
-				auto time_tm = *std::localtime(&time_c);
-				strftime(buff, sizeof(buff), "%F-%H%M%S", &time_tm);
-				std::string fileName = buff;
-				out_file.open(fileName + ".txt");
-			}
-		}
-
-		// Try to read and write data to and from the data buffer if read and write events occur.
-		if (NetworkEvents.lNetworkEvents & FD_READ) {
-			if (NetworkEvents.lNetworkEvents & FD_READ &&
-				NetworkEvents.iErrorCode[FD_READ_BIT] != 0) {
-				//printf("FD_READ failed with error %d\n", NetworkEvents.iErrorCode[FD_READ_BIT]);
-				OutputDebugString("FD_READ FAILED");
-				break;
-			}
-
-			// Points to the incoming Event's socket info
-			LPSOCKET_INFORMATION SocketInfo = SocketArray[Event - WSA_WAIT_EVENT_0];
-
-			// Counting max bytes to accept
-			int left = atoi(queryPacketSizeStr);
-
-			// Read data only if the receive buffer is empty.
-			if (SocketInfo->BytesRECV == 0) {
-				SocketInfo->DataBuf.buf = SocketInfo->Buffer;
-				SocketInfo->DataBuf.len = atoi(queryPacketSizeStr);
-				Flags = 0;
-				if (WSARecv(SocketInfo->Socket, &(SocketInfo->DataBuf), 1, &RecvBytes, &Flags, NULL, NULL) == SOCKET_ERROR)
-				{
-					if (WSAGetLastError() != WSAEWOULDBLOCK)
-					{
-						printf("WSARecv() failed with error %d\n", WSAGetLastError());
-						FreeSocketInformation(Event - WSA_WAIT_EVENT_0);
-						return;
-					}
-				}
-				else
-				{
-					char cstr[INPUT_MAX_CHAR];
-					totalBytes += RecvBytes;
-					SocketInfo->BytesRECV = 0;
-					sprintf(cstr, "&RecvBytes : %lu TotalBytes: %lu %\n", RecvBytes, totalBytes);
-
-					OutputDebugString(cstr);
-					// Have read this much
-					//SocketInfo->BytesRECV = 0;
-					//SocketInfo->BytesRECV = RecvBytes;
-					//SocketInfo->DataBuf.len -= RecvBytes;
-					//left -= RecvBytes;
-				}
-			}
-			//// Things to write
-			//if (SocketInfo->BytesRECV > SocketInfo->BytesWRITTEN)
-			//{
-			//	totalBytes += countActualBytes(SocketInfo->DataBuf.buf, SocketInfo->DataBuf.len);
-
-			//	// If we're in upload mode
-			//	if (upload) {
-			//		out_file << SocketInfo->DataBuf.buf;
-			//	}
-			//	// Push buffer pointer up
-			//	SocketInfo->DataBuf.buf = SocketInfo->Buffer + SocketInfo->BytesWRITTEN;
-			//	SocketInfo->DataBuf.len = SocketInfo->BytesRECV - SocketInfo->BytesWRITTEN;
-
-			//	// CLEAR IT
-			//	SocketInfo->BytesRECV = 0;
-			//	SocketInfo->BytesWRITTEN = 0;
-			//}
-		}
-		
-		// Client closes port
-		//if (NetworkEvents.lNetworkEvents & FD_CLOSE)
-		//{
-		//	if (NetworkEvents.iErrorCode[FD_CLOSE_BIT] != 0)
-		//	{
-		//		printf("FD_CLOSE failed with error %d\n", NetworkEvents.iErrorCode[FD_CLOSE_BIT]);
-		//		break;
-		//	}
-		//	end = std::chrono::high_resolution_clock::now();
-		//	totalTime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-
-		//	// Trigger event here to print
-		//	SetEvent(print_evt);
-
-		//	printf("Client disconnect... total bytes rec'd: %d, total time: %d(ms)\n", totalBytes, totalTime);
-		//	printf("Closing socket information %d\n", SocketArray[Event - WSA_WAIT_EVENT_0]->Socket);
-
-		//	// Reset all stats
-		//	totalBytes = 0;
-		//	totalTime = 0;
-		//	expected_packets = 0;
-		//	recv_packets = 0;
-
-		//	out_file.close();
-		//	FreeSocketInformation(Event - WSA_WAIT_EVENT_0);
-		//}
-	} // End while loop
-}
-
-void runTcpLoop(SOCKET Listen, bool upload) {
-
-}
-
-void printDword(DWORD word) {
-
 }
 
 /*------------------------------------------------------------------------------------------------------------------
@@ -429,40 +184,27 @@ int setupUDPSrv() {
 	int err;
 	// Check port
 	if (serverUDPParams.portStr[0] == '\0') {
-		OutputDebugString("UDP port error");
+		OutputDebugString("UDP port empty\n");
 		return 2;
 	}
 
 	// check address
 	if (serverUDPParams.addrStr[0] == '\0') {
-		OutputDebugString("UDP addr error");
+		OutputDebugString("Multicast addr empty\n");
 		return 4;
 	}
 
-	// This check doesn't work lol
-	/*OutputDebugString("Checking multicast address\n");
-	u_long tmpAddr = inet_addr(serverUDPParams.addrStr);
-	OutputDebugString(serverUDPParams.addrStr);
-	if (!((tmpAddr >= 0xe0000000) || (tmpAddr <= 0xefffffff))) {
-		OutputDebugString("UDP addr error");
-		return 4;
-	}
-	OutputDebugString("multicast address correct\n");*/
-
-	// Check packet size
-	if (serverUDPParams.packetSizeStr[0] == '\0') {
-		OutputDebugString("UDP packet size error");
-		return 3;
-	}
 	// Startup
 	if ((err = WSAStartup(0x0202, &WSAData)) != 0) //No usable DLL
 	{
-		exit(err);
+		OutputDebugString(convertErrString("WSAStartup error:", err));
+		return (err);
 	}
 	// Create Socket
 	if ((ListenSocket = socket(AF_INET, SOCK_DGRAM, 0)) == INVALID_SOCKET)
 	{
-		exit(600);
+		OutputDebugString(convertErrString("ListenSocket error:", WSAGetLastError()));
+		return 600;
 	}
 
 	// Bind the socket
@@ -473,7 +215,7 @@ int setupUDPSrv() {
 	// Bind Listen socket to Internet Addr, basically let system auto-config
 	if (bind(ListenSocket, (PSOCKADDR)&serverUDP, sizeof(serverUDP)) == SOCKET_ERROR)
 	{
-		printf("bind() failed with error %d\n", WSAGetLastError());
+		OutputDebugString(convertErrString("bind() failed with error\n", WSAGetLastError()));
 		return (601);
 	}
 
@@ -483,23 +225,19 @@ int setupUDPSrv() {
 	stMreq.imr_interface.s_addr = INADDR_ANY;
 
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
-		printf("setsockopt() IP_ADD_MEMBERSHIP address %s failed, Err: %d\n",
-			serverUDPParams.addrStr, WSAGetLastError());
-		OutputDebugString("setsockopt() IP_ADD_MEMBERSHIP address\n");
+		OutputDebugString(convertErrString("setsockopt() IP_ADD_MEMBERSHIP address:\n", WSAGetLastError()));
 		return 800;
 	}
 
 	lTTL = 1; // default time to live
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_MULTICAST_TTL, (char *)&lTTL, sizeof(lTTL)) == SOCKET_ERROR) {
-		printf("setsockopt() IP_MULTICAST_TTL failed, Err: %d\n",
-			WSAGetLastError());
+		OutputDebugString(convertErrString("setsockopt() IP_MULTICAST_TTL failed, Err:", WSAGetLastError()));
 	}
 
 	// Doesn't send to itself in the multicast
 	BOOL fFlag = FALSE;
 	if (setsockopt(ListenSocket, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&fFlag, sizeof(fFlag)) == SOCKET_ERROR) {
-		printf("setsockopt() IP_MULTICAST_LOOP failed, Err: %d\n",
-			WSAGetLastError());
+		OutputDebugString(convertErrString("setsockopt() IP_MULTICAST_LOOP failed, Err:", WSAGetLastError()));
 	}
 
 	clientUDP.sin_family = AF_INET;
@@ -542,41 +280,50 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 	DWORD Flags = 0;
 	int counter = 0;
-	char test[128]{ "#TSMWIN\n" };
-	char test2[128]{ "hi there\n" };
-	char test3[128]{ "go wawyasdsfs\n" };
-	char * testArr[3] = { test, test2, test3 };
-	char buf[128]{ "message sent" };
 	int addr_size = sizeof(struct sockaddr_in);
-	char buffer[8192]; // buffer to read .wav file
-	int first = 0; // indicator to delay second udp send
+	char buffer[AUD_BUF_SIZE]; // buffer to read .wav file
 
 	SI->DataBuf.len = PACKET_SIZE;
 
 	FILE *fp;
-	fp = fopen("song.wav", "rb");
+	//char songname[128]{ "song.wav" };
+	//char songname[128]{ "./Library/Faded.wav" };
+	int isong = 0;
+	char songname[128];
+	strcpy(songname, library[isong].c_str());
+	char nowplaying[128]{ "Now Broadcasting: " };
+	char errormsg[128]{ "Broadcast error" };
+	char broadcastdone[128]{ "Broadcast over" };
+	fp = fopen(songname, "rb");
 
-	while (TRUE) {
-		// Send diff message setup
-		switch (counter % 3) {
-		case 1:
-			SI->DataBuf.buf = testArr[0];
-			counter++;
-			break;
-		case 2:
-			SI->DataBuf.buf = testArr[1];
-			counter++;
-			break;
-		default:
-			//SI->DataBuf.buf = testArr[2];
-			//counter++;
+	discBool = false;
+
+	if (libindex != -1) {
+		while (TRUE) {
+			if (discBool) {
+				OutputDebugString("Disconnect clicked\n");
+				break;
+			}
+
 			DWORD readBytes;
 			readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
 
 			if (readBytes == 0) {
-				exit(1);
+				if (isong == libindex) {
+					OutputDebugString("Done sending\n");
+					break;
+				}
+				else {
+					++isong;
+					counter = 0;
+					memset(songname, 0, sizeof(songname));
+					strcpy(songname, library[isong].c_str());
+
+					fp = fopen(songname, "rb");
+					readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
+				}
 			}
-				
+
 			//empty unloaded space in buffer if buffer isn't full
 			if (readBytes < sizeof(buffer)) {
 
@@ -585,37 +332,40 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 			SI->DataBuf.buf = &buffer[0];
 
-			break;
-		}
-		if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *) & clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
-			printf("WSASendTo() failed, Error: %d\n", WSAGetLastError());
+			if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *)& clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
+				OutputDebugString(convertErrString("WSASendTo() failed, Error:", WSAGetLastError()));
 
-			//temporary debug statement
-			char err[20];
-			_itoa(WSAGetLastError(), err, 10);
-			OutputDebugString(err);
-
-			return 1;
-		}
-		else {
-			if (counter % 3 == 1) {
-				wipeScreen(cmdhwnd);
+				return 1;
 			}
-			char r[1]{ '\r' };
-			printScreen(cmdhwnd, buf);
-			printScreen(cmdhwnd, r);
-		}
+			else {
+				++counter;
+				if (counter == 1) {
+					wipeScreen(cmdhwnd);
+					printLibrary(cmdhwnd);
+					set_print_x(380);
+					set_print_y(200);
+					printScreen(cmdhwnd, nowplaying);
+					printScreen(cmdhwnd, songname);
+				}
+			}
 
-		//delaying second send for debug, to be removed
-		if (first == 0) {
-			Sleep(1000 * 5);
-			first++;
-		}
+			//throttle send frequency to prevent client buffer overflow
+			std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
 
-		//throttle send frequency to prevent client buffer overflow
-		Sleep(20);
+			while (time_span.count() <= 0.02) {
+				end = std::chrono::high_resolution_clock::now();
+				time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+			}
+		}
 	}
+
+	OutputDebugString("Leaving Multicast server\n");
 	closesocket(Listen);
+
+	wipeScreen(cmdhwnd);
+	printScreen(cmdhwnd, broadcastdone);
 
 	/* Tell WinSock we're leaving */
 	WSACleanup();
@@ -689,7 +439,6 @@ void wipeScreen(HWND hwnd) {
 	xPosition = 0;
 	yPosition = 0;
 	HDC textScreen = GetDC(hwnd);
-	//HBRUSH brush = CreateSolidBrush(RGB(0, 0, 0));
 	Rectangle(textScreen, -1, -1, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
 }
 
@@ -719,12 +468,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
 		return 0;
 
 	cmdhwnd = CreateWindow(CmdModName, CmdModName, WS_OVERLAPPEDWINDOW, 10, 10,
-		600, 400, NULL, NULL, hInst, NULL);
+		800, 600, NULL, NULL, hInst, NULL);
 	ShowWindow(cmdhwnd, nCmdShow);	//Show the first window - our connect module with nothing
 	UpdateWindow(cmdhwnd);
-
-	// Create print event here
-	print_evt = CreateEventA(NULL, FALSE, FALSE, TEXT("PrintEvent"));
 
 	// Message loop
 	while (GetMessage(&Msg, NULL, 0, 0))
@@ -739,42 +485,68 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	WPARAM wParam, LPARAM lParam)
 {
+	char done[128] = "Done broadcast";
+
 	switch (message)
 	{
 	case WM_COMMAND:
-		switch(LOWORD(wParam)){
+		switch(LOWORD(wParam)) {
 		case ID_SRV_START:
+			wipeScreen(cmdhwnd);
 			clearInputs(&serverTCPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_QUERYBOX_SRV), hwnd, HandleTCPSrvSetup);
 			if (setupTCPSrv() == 0) {
 				h_thread_srv = CreateThread(NULL, 0, runTCPthread, (LPVOID)false, 0, &thread_srv_id);
-				h_thread_print = CreateThread(NULL, 0, printTCPthread, (LPVOID)hwnd, 0, &thread_print_id);
 			}
 			break;
 		case ID_SRV_MULTICAST:
+			wipeScreen(cmdhwnd);
 			clearInputs(&serverUDPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_QUERYBOX_SRV_MULTICAST), hwnd, HandleMulticastSetup);
 			if (setupUDPSrv() == 0) { // valid inputs
 				h_thread_srv = CreateThread(NULL, 0, runUDPthread, (LPVOID)false, 0, &thread_srv_id);
-				h_thread_print = CreateThread(NULL, 0, printUDPthread, (LPVOID)hwnd, 0, &thread_print_id);
 			}
 			break;
 		case ID_CLN_REQFILE:
+			wipeScreen(cmdhwnd);
 			clearInputs(&clientTgtParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_QUERY_FILE), hwnd, HandleClnQuery);
-			if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
-				OutputDebugString("TCPCLNSetup ok\n");
-				requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename);
+			if (clientTgtParams.stream) {
+				//if (setupOneToOne())
 			}
-			OutputDebugString("REQFILE\n");
+			else {
+				if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
+					requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename);
+				}
+			}
 			break;
 		case ID_CLN_JOINSTREAM:
+			wipeScreen(cmdhwnd);
 			clearInputs(&clientUDPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_JOINBROADCAST), hwnd, HandleClnJoin);
 			if (setupUDPCln(&clientUDPParams, &ClientSocket, &WSAData) == 0) {
-				OutputDebugString("ID_CLN_JOINSTREAM\n");
 				h_thread_accept = CreateThread(NULL, 0, runUDPRecvthread, (LPVOID)cmdhwnd, 0, NULL);
+				pb_print_thread = CreateThread(NULL, 0, printSoundProgress, (LPVOID)hwnd, 0, NULL);
 			}
+			break;
+		case ID_GEN_DISCONNECT:
+			discBool = true;
+			break;
+		}
+		break;
+	case WM_TIMER:
+		switch (wParam)
+		{
+		case IDT_TIMER:
+			OutputDebugString("timedout\n");
+			discBool = true;
+			TerminateThread(pb_print_thread, 700);
+			wipeScreen(cmdhwnd);
+			printScreen(cmdhwnd, done);
+			break;
+		case IDT_TIMER2:
+			OutputDebugString("timedout2\n");
+			TerminateThread(h_thread_accept, 200);
 			break;
 		}
 		break;
@@ -918,13 +690,6 @@ INT_PTR CALLBACK HandleMulticastSetup(HWND hDlg, UINT message, WPARAM wParam, LP
 				MessageBoxA(hDlg, MSG_INPUT_ERR_NOINPUT, LABEL_INPUT_ERR, MB_OK);
 				break;
 			}
-			/*Get Packet size*/
-			err = GetDlgItemText(hDlg, IDT_MULTICAST_PACKETSIZE, serverUDPParams.packetSizeStr, sizeof(serverUDPParams.packetSizeStr));
-			if (err == 0) {
-				EndDialog(hDlg, LOWORD(wParam));
-				MessageBoxA(hDlg, MSG_INPUT_ERR_NOINPUT, LABEL_INPUT_ERR, MB_OK);
-				break;
-			}
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}
@@ -1035,7 +800,7 @@ INT_PTR CALLBACK HandleClnJoin(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 	switch (message) {
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDCANCEL) {
-			MessageBox(NULL, "Pressed cancel", "cancelled", MB_OK);
+			MessageBox(NULL, "Pressed cancel", "Cancelled", MB_OK);
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)FALSE;
 		}
@@ -1099,11 +864,10 @@ DWORD WINAPI runTCPthread(LPVOID upload) {
 		}
 		else {
 			OutputDebugString("Accepted\n");
-			char buf[128]{"accepted client"};
+			char buf[128]{"Accepted client"};
 			char r[1]{ '\r' };
 			printScreen(cmdhwnd, buf);
 			printScreen(cmdhwnd, r);
-			//CreateThread(NULL, 0, runTCPthread, (LPVOID)false, 0, &thread_srv_id);
 			if ((h_thread_accept = CreateThread(NULL, 0, runAcceptThread, (LPVOID)AcceptSocket, 0, &thread_accept_id)) == NULL) {
 				return 405;
 			}
@@ -1223,6 +987,7 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	sprintf(cstr, "Total Bytes Sent'd: %d\n", SocketInfo->totalBytesTransferred);
 	OutputDebugString(cstr);
 
+	printScreen(cmdhwnd, filename);
 	//Print final sent stats
 	sprintf(totalSentStr, "Total sent: %lu\n", SocketInfo->totalBytesTransferred);
 	printScreen(cmdhwnd, totalSentStr);
@@ -1231,39 +996,6 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	closesocket(SocketInfo->Socket);
 	GlobalFree(SocketInfo);
 	return 0;
-}
-
-/*------------------------------------------------------------------------------------------------------------------
---    FUNCTION: printTCPthread
---
---    DATE : FEB 12, 2019
---
---    REVISIONS :
---    		(FEB 12, 2019): Created
---
---    DESIGNER : Jacky Li
---
---    PROGRAMMER : Jacky Li
---
---    INTERFACE : DWORD WINAPI printTCPthread(LPVOID hwnd) 
---			VPVOID hwnd:		The window handle to which this thread should print to
---
---    RETURNS : DWORD
---			200 on completion
---
---    NOTES :
---			Thread function to run the TCP listening server
-----------------------------------------------------------------------------------------------------------------------*/
-DWORD WINAPI printTCPthread(LPVOID hwnd) {
-	while (1) {
-		WaitForSingleObject(print_evt, INFINITE);
-		char cstr[INPUT_MAX_CHAR];
-		char cr[INPUT_MAX_CHAR]{'\r'};
-		sprintf(cstr, "Client disconnect... total bytes rec'd: %d, total time: %d(ms)\n", totalBytes, totalTime);
-		printScreen((HWND)hwnd, cstr);
-		printScreen((HWND)hwnd, cr);
-	}
-	return 200;
 }
 
 /*------------------------------------------------------------------------------------------------------------------
@@ -1289,103 +1021,168 @@ DWORD WINAPI printTCPthread(LPVOID hwnd) {
 --			Thread function to run the UDP listening server
 ----------------------------------------------------------------------------------------------------------------------*/
 DWORD WINAPI runUDPthread(LPVOID upload) {
+	printLibrary(cmdhwnd);
 	while (1) {
-		if (runUdpLoop(ListenSocket, (BOOL)upload) == 1) {
-			OutputDebugString("runUDPthread error\n");
+		if (runUdpLoop(ListenSocket, (BOOL)upload) == 1 || libindex == -1) {
+			OutputDebugString("runUDPthread exit\n");
 			break;
 		}
 	}
+	doneplaying = true;
 	return 200;
 }
 
 DWORD WINAPI runUDPRecvthread(LPVOID recv) {
-	joiningStream(&clientUDPParams, &ClientSocket, (HWND) recv);
+	joiningStream(&clientUDPParams, &ClientSocket, (HWND) recv, &discBool);
+	OutputDebugString("Finished runUDPRecvthread\n");
 	return 200;
 }
 
-/*------------------------------------------------------------------------------------------------------------------
---    FUNCTION: printUDPthread
---
---    DATE : FEB 12, 2019
---
---    REVISIONS :
---    		(FEB 12, 2019): Created
---
---    DESIGNER : Jacky Li
---
---    PROGRAMMER : Jacky Li
---
---    INTERFACE : DWORD WINAPI printUDPthread(LPVOID hwnd)
---			VPVOID hwnd:		The window handle to which this thread should print to
---
---    RETURNS : DWORD
---			200 on completion
---
-----------------------------------------------------------------------------------------------------------------------*/
-DWORD WINAPI printUDPthread(LPVOID hwnd) {
+DWORD WINAPI printSoundProgress(LPVOID hwnd) {
+	int counter = 0;
+	char dot[2] = ".";
+	char listening_msg[128] = "Listening to radio";
+	bool listen_bool = false;
+
+	discBool = false;
+
 	while (1) {
-		WaitForSingleObject(print_evt, INFINITE);
-		char cstr[INPUT_MAX_CHAR];
-		char cr[INPUT_MAX_CHAR]{ '\r' };
-		//printf("Client EOT... total bytes rec'd: %d, total time: %d(ms), data packets: %d/%d\n", totalBytes, totalTime, recv_packets, expected_packets);
-		sprintf(cstr, "Client disconnect... total bytes rec'd: %d, total time: %d(ms) data packets: %d/%d\n", totalBytes, totalTime, recv_packets, expected_packets);
-		printScreen((HWND)hwnd, cstr);
-		printScreen((HWND)hwnd, cr);
+		if (discBool)
+			break;
+
+		if (counter == 5) {
+			wipeScreen(cmdhwnd);
+			counter = 0;
+			listen_bool = false;
+		}
+
+		if (!listen_bool) {
+			printScreen(cmdhwnd, listening_msg);
+			listen_bool = true;
+		}
+
+		printScreen(cmdhwnd, dot);
+		++counter;
+		Sleep(1000);
 	}
-	return 200;
+
+	return 700;
 }
 
-// Create a socket information struct based on the passed in SOCKET, inits SI values, and shoves it into a global array of sockets
-BOOL CreateSocketInformation(SOCKET s)
-{
-	LPSOCKET_INFORMATION SI;
+void printLibrary(HWND h) {
+	WIN32_FIND_DATA ffd;
+	LARGE_INTEGER filesize;
+	HDC textScreen = GetDC(h);
+	char szDir[MAX_PATH];
+	size_t length_of_arg;
+	HANDLE hFind = INVALID_HANDLE_VALUE;
+	DWORD dwError = 0;
+	char r[128] = "\r";
+	char nosongs[128] = "No songs";
 
-	if ((EventArray[EventTotal] = WSACreateEvent()) == WSA_INVALID_EVENT)
+	Rectangle(textScreen, 5, 5, 175, 530);
+
+	//strcpy(szDir, "./");
+	strcpy(szDir, "../x64/Release/Library");
+	//strcpy(szDir, "./Library");
+	strcat(szDir, "\\*");
+
+	hFind = FindFirstFile(szDir, &ffd);
+
+	if (INVALID_HANDLE_VALUE == hFind)
 	{
-		printf("WSACreateEvent() failed with error %d\n", WSAGetLastError());
-		return FALSE;
+		DisplayErrorBox(TEXT("FindFirstFile"));
+		return;
 	}
 
-	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL)
+	// List all the files in the directory with some info about them.
+
+	set_print_x(7);
+	set_print_y(7);
+
+	do
 	{
-		printf("GlobalAlloc() failed with error %d\n", GetLastError());
-		return FALSE;
+		if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+			++libindex;
+			filesize.LowPart = ffd.nFileSizeLow;
+			filesize.HighPart = ffd.nFileSizeHigh;
+			modPrintScreen(h, ffd.cFileName, 7);
+			modPrintScreen(h, r, 7);
+			std::string tmp(ffd.cFileName);
+			library[libindex] = tmp;
+		}
+	} while (FindNextFile(hFind, &ffd) != 0);
+
+	if (libindex == -1) {
+		modPrintScreen(h, nosongs, 7);
 	}
 
-	// Prepare SocketInfo structure for use.
-	SI->Socket = s;
-	SI->BytesWRITTEN = 0;
-	SI->BytesRECV = 0;
-	SocketArray[EventTotal] = SI;
+	dwError = GetLastError();
+	if (dwError != ERROR_NO_MORE_FILES)
+	{
+		DisplayErrorBox(TEXT("FindFirstFile"));
+	}
 
-	// Setup Buffer size
-	//SI->Buffer = (char *)malloc(atoi(queryPacketSizeStr) * sizeof(char));
-	//memset(SI->Buffer, '\0', atoi(queryPacketSizeStr));
-
-	EventTotal++;
-
-	return(TRUE);
+	FindClose(hFind);
+	//return dwError;
 }
 
-// Frees socket information
-void FreeSocketInformation(DWORD Event)
+
+void DisplayErrorBox(LPCSTR lpszFunction)
 {
-	LPSOCKET_INFORMATION SI = SocketArray[Event];
-	DWORD i;
+	// Retrieve the system error message for the last-error code
 
-	closesocket(SI->Socket);
+	LPVOID lpMsgBuf;
+	LPVOID lpDisplayBuf;
+	DWORD dw = GetLastError();
 
-	GlobalFree(SI);
+	FormatMessage(
+		FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		FORMAT_MESSAGE_FROM_SYSTEM |
+		FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL,
+		dw,
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		(LPTSTR)&lpMsgBuf,
+		0, NULL);
 
-	WSACloseEvent(EventArray[Event]);
+	// Display the error message and clean up
 
-	// Squash the socket and event arrays
+	lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
+		(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
+	StringCchPrintf((LPTSTR)lpDisplayBuf,
+		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+		TEXT("%s failed with error %d: %s"),
+		lpszFunction, dw, lpMsgBuf);
+	MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
 
-	for (i = Event; i < EventTotal; i++)
+	LocalFree(lpMsgBuf);
+	LocalFree(lpDisplayBuf);
+}
+
+void modPrintScreen(HWND hwnd, char *buffer, int startX) {
+	HDC textScreen = GetDC(hwnd);
+	SIZE size;
+	GetTextMetrics(textScreen, &tm);        // get text metrics 
+
+	if (*buffer == '\r')
 	{
-		EventArray[i] = EventArray[i + 1];
-		SocketArray[i] = SocketArray[i + 1];
+		yPosition = yPosition + tm.tmHeight + tm.tmExternalLeading;
+		set_print_x(startX);
+		return;
 	}
 
-	EventTotal--;
+	GetTextExtentPoint32(textScreen, buffer, strlen(buffer), &size);
+
+	TextOut(textScreen, xPosition, yPosition, buffer, strlen(buffer));
+	xPosition = xPosition + size.cx + 1;
+	ReleaseDC(hwnd, textScreen);
+}
+
+void set_print_x(int x) {
+	xPosition = x;
+}
+
+void set_print_y(int y) {
+	yPosition = y;
 }

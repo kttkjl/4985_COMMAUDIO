@@ -1,6 +1,7 @@
 #pragma once
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "Winmm.lib")
+#pragma comment(lib, "User32.lib")
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
 #include <winsock2.h>
@@ -13,18 +14,35 @@
 #include <chrono>
 #include <string>
 #include <iostream>
+#include <string>
+#include <vector>
 #include <fstream>
 #include <ctime>
+#include <strsafe.h>
+#include <tchar.h> 
 #include "resource.h"
 #include "network.h"
 #include "SocketInformation.h"
 #include "Callbacks.h"
 #include "QueryParams.h"
 
+static bool discBool = true;
+
+static HANDLE pb_print_thread;
+static DWORD thread_print_id;
+
 void printScreen(HWND hwnd, char *buffer);
+void modPrintScreen(HWND hwnd, char *buffer, int startX);
 void wipeScreen(HWND hwnd);
+void printLibrary(HWND h);
+void DisplayErrorBox(LPCSTR lpszFunction);
 
 void clearInputs(LPQueryParams qp);
+void set_print_x(int x);
+void set_print_y(int y);
+//void disconnecting(SOCKET * s);
+
+DWORD WINAPI printSoundProgress(LPVOID hwnd);
 
 INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK HandleMulticastSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
