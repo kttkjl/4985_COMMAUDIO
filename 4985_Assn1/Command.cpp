@@ -1127,8 +1127,8 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	SocketInfo->totalBytesTransferred = 0;
 	// Wait for Client
 	// SocketInfo population
-	//SocketInfo->Buffer = (char *)malloc(DATA_BUF_SIZE);
-	//memset(SocketInfo->Buffer, 0, sizeof(char) * DATA_BUF_SIZE);
+	SocketInfo->Buffer = (char *)malloc(DATA_BUF_SIZE);
+	memset(SocketInfo->Buffer, 0, sizeof(char) * DATA_BUF_SIZE);
 	SocketInfo->DataBuf.len = DATA_BUF_SIZE;
 	SocketInfo->DataBuf.buf = SocketInfo->Buffer;
 	SocketInfo->Socket = (SOCKET)acceptSocket;
@@ -1143,10 +1143,10 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	{
 		if (WSAGetLastError() != WSA_IO_PENDING)
 		{
-			OutputDebugString("PostSleep WSA Fail, client prob disconnected\n");
 			char cstr[DATA_BUF_SIZE];
 			char cr[1]{ '\r' };
-			sprintf(cstr, "TotalBytes recv'd: %d\n", SocketInfo->totalBytesTransferred);
+			sprintf(cstr, "Recv filename failed: %d", WSAGetLastError());
+			OutputDebugString(convertErrString("Recv filename failed: ", WSAGetLastError()));
 			printScreen(cmdhwnd, cstr);
 			printScreen(cmdhwnd, cr);
 			OutputDebugString(cstr);
@@ -1178,12 +1178,9 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	//memset(SocketInfo->Buffer, 0, DATA_BUF_SIZE);
 
 	// Send loop, probably
-	char ch;
-	int bufInd = 0;
 	DWORD readBytes;
 	char sendBuffer[PACKET_SIZE];
 	while ((readBytes = fread(sendBuffer, sizeof(char), sizeof(sendBuffer), fptr)) >0) {
-
 		SocketInfo->DataBuf.buf = &sendBuffer[0];
 			SocketInfo->DataBuf.len = PACKET_SIZE;
 			// Buffer filled, gotta send whole buffer
@@ -1202,16 +1199,13 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 			// All sent
 			memset(SocketInfo->Buffer, 0, sizeof(SocketInfo->Buffer));
 			SocketInfo->BytesWRITTEN = 0;
-			bufInd = 0;
+	/*		bufInd = 0;*/
 		
 	}
 	// Show progress of final
 	char pstr[128];
+	char totalSentStr[128];
 	char cr[1]{ '\r' };
-	sprintf(pstr, "Last buffer index: %d\n", bufInd);
-	SocketInfo->DataBuf.len = bufInd;
-	printScreen(cmdhwnd, pstr);
-	printScreen(cmdhwnd, cr);
 
 	//Send last thing
 	if (WSASend((SOCKET)acceptSocket, &(SocketInfo->DataBuf), 1, NULL, Flags, &(SocketInfo->Overlapped), srvSentFileCallback) == SOCKET_ERROR)
@@ -1228,6 +1222,11 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	char cstr[DATA_BUF_SIZE];
 	sprintf(cstr, "Total Bytes Sent'd: %d\n", SocketInfo->totalBytesTransferred);
 	OutputDebugString(cstr);
+
+	//Print final sent stats
+	sprintf(totalSentStr, "Total sent: %lu\n", SocketInfo->totalBytesTransferred);
+	printScreen(cmdhwnd, totalSentStr);
+	printScreen(cmdhwnd, cr);
 
 	closesocket(SocketInfo->Socket);
 	GlobalFree(SocketInfo);
