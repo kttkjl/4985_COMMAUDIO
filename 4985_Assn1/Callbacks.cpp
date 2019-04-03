@@ -88,8 +88,15 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 void CALLBACK completeCallback(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags) {
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(lpOverlapped->hEvent);
 
+	if (discBool)
+		return;
+
 	char cstr[AUD_BUF_SIZE];
 	SI->BytesRECV = countActualBytes(SI->DataBuf.buf, cbTransferred);
 	//sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
 	SI->totalBytesTransferred += SI->BytesRECV;
 }
+
+//void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
+//
+//}

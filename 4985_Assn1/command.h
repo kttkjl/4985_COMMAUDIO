@@ -28,6 +28,9 @@
 
 static bool discBool = true;
 
+static HANDLE pb_print_thread;
+static DWORD thread_print_id;
+
 void printScreen(HWND hwnd, char *buffer);
 void modPrintScreen(HWND hwnd, char *buffer, int startX);
 void wipeScreen(HWND hwnd);

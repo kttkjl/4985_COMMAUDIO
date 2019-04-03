@@ -15,8 +15,7 @@ static WAVEHDR*				chunkBuffer;
 struct ip_mreq				stMreq;
 SOCKADDR_IN					lclAddr, srcAddr;
 LPSOCKET_INFORMATION		SI;
-HANDLE						pb_print_thread;
-DWORD						thread_print_id;
+SOCKET *					s_sock;
 
 static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
 {
@@ -335,6 +334,7 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 
 	int err;
 	DWORD flags = 0;
+	s_sock = sock;
 	SI->Buffer = (char *)malloc(AUD_BUF_SIZE);
 	memset(SI->Buffer, 0, sizeof(SI->Buffer));
 	SI->DataBuf.buf = SI->Buffer;
@@ -370,18 +370,11 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 		ExitProcess(10);
 	}
 
-	pb_print_thread = CreateThread(NULL, 0, printSoundProgress, (LPVOID)hwnd, 0, NULL);
-
 	discBool = false;
 
 	while (TRUE) {
 		int addr_size = sizeof(struct sockaddr_in);
-		OutputDebugString("here\n");
-		if (discBool) {
-			OutputDebugString("Disconnect clicked (client)\n");
-			break;
-		}
-		
+
 		if (WSARecvFrom(*sock, &(SI->DataBuf), 1, NULL, &flags, (SOCKADDR *)& srcAddr, &addr_size, &SI->Overlapped, completeCallback) != 0) {
 			if (WSAGetLastError() != WSA_IO_PENDING) {
 				OutputDebugString("IO ERROR \n error no ");
@@ -404,12 +397,18 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 			}
 		}
 
+		SetTimer(hwnd, IDT_TIMER, 10000, (TIMERPROC)NULL);
+		//SetTimer(hwnd, IDT_TIMER2, 10000, TimerProc);
+		if (discBool) break;
 		SleepEx(INFINITE, TRUE);
+		KillTimer(hwnd, IDT_TIMER);
+		//KillTimer(hwnd, IDT_TIMER2);
 
 		addtoBufferAndPlay(hWaveOut, SI->DataBuf.buf, SI->DataBuf.len);
 
 	} // end of infinite loop
 
+	OutputDebugString("hisfsdfsfsfsfsfsd");
 	//wait for sound to finish playing
 	while (waveFreeBlockCount < CHUNK_NUM) {
 		/*auto start = std::clock();
@@ -417,26 +416,6 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 
 		//auto end = std::chrono::system_clock::now();
 		//Sleep(10);
-	}
-
-	if (discBool) {
-		//audio clean up
-		DeleteCriticalSection(&mutex);
-		HeapFree(GetProcessHeap(), 0, chunkBuffer);
-		waveOutClose(hWaveOut);
-
-		stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
-		stMreq.imr_interface.s_addr = INADDR_ANY;
-		if (setsockopt(*sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
-			printf("setsockopt() IP_DROP_MEMBERSHIP address %s failed, Err: %d\n",
-				qp->addrStr, WSAGetLastError());
-		}
-
-		closesocket(*sock);
-
-		/* Tell WinSock we're leaving */
-		WSACleanup();
-		return;
 	}
 
 	//unprepare all chunks
@@ -463,4 +442,12 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 
 	/* Tell WinSock we're leaving */
 	WSACleanup();
+}
+
+void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
+	OutputDebugString("timerproc\n");
+	//TerminateThread(h_thread_accept, 200);
+	//closesocket(*s_sock);
+	//GlobalFree(SI);
+	//WSACleanup();
 }

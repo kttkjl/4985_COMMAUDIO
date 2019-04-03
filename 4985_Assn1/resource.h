@@ -26,6 +26,8 @@
 #define ID_CLN_DISCONNECT				60002
 #define ID_SRV_DISCONNECT				60003
 #define ID_GEN_DISCONNECT				1062
+#define IDT_TIMER						1063
+#define IDT_TIMER2						1064
 
 // Next default values for new objects
 // 

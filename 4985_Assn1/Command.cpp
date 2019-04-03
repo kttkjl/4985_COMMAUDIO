@@ -286,8 +286,8 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 	SI->DataBuf.len = PACKET_SIZE;
 
 	FILE *fp;
-	char songname[128]{ "song.wav" };
-	//char songname[128]{ "./Library/Faded.wav" };
+	//char songname[128]{ "song.wav" };
+	char songname[128]{ "./Library/Faded.wav" };
 	char nowplaying[128]{ "Now Playing: " };
 	char errormsg[128]{ "Broadcast error" };
 	char broadcastdone[128]{ "Broadcast ended" };
@@ -318,7 +318,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 		SI->DataBuf.buf = &buffer[0];
 
 		if (WSASendTo(Listen, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), Flags, (SOCKADDR *) & clientUDP, addr_size, &(SI->Overlapped), NULL) < 0) {
-			OutputDebugString(convertErrString("WSASendTo() failed, Error: %d\n", WSAGetLastError()));
+			OutputDebugString(convertErrString("WSASendTo() failed, Error:", WSAGetLastError()));
 
 			return 1;
 		}
@@ -334,8 +334,15 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 		//throttle send frequency to prevent client buffer overflow
 		//Sleep(20);
-		auto start = std::clock();
-		while ((std::clock() - start) != 20 && !discBool) { }
+
+		std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+		std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+
+		while (time_span.count() <= 0.02) {
+			end = std::chrono::high_resolution_clock::now();
+			time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+		}
 	}
 
 	OutputDebugString("Leaving Multicast server\n");
@@ -463,6 +470,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	WPARAM wParam, LPARAM lParam)
 {
+	char done[128] = "Done broadcast";
+
 	switch (message)
 	{
 	case WM_COMMAND:
@@ -497,10 +506,27 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_JOINBROADCAST), hwnd, HandleClnJoin);
 			if (setupUDPCln(&clientUDPParams, &ClientSocket, &WSAData) == 0) {
 				h_thread_accept = CreateThread(NULL, 0, runUDPRecvthread, (LPVOID)cmdhwnd, 0, NULL);
+				pb_print_thread = CreateThread(NULL, 0, printSoundProgress, (LPVOID)hwnd, 0, NULL);
 			}
 			break;
 		case ID_GEN_DISCONNECT:
 			discBool = true;
+			break;
+		}
+		break;
+	case WM_TIMER:
+		switch (wParam)
+		{
+		case IDT_TIMER:
+			OutputDebugString("timedout\n");
+			discBool = true;
+			TerminateThread(pb_print_thread, 700);
+			wipeScreen(cmdhwnd);
+			printScreen(cmdhwnd, done);
+			break;
+		case IDT_TIMER2:
+			OutputDebugString("timedout2\n");
+			TerminateThread(h_thread_accept, 200);
 			break;
 		}
 		break;
@@ -1001,7 +1027,6 @@ DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 	int counter = 0;
 	char dot[2] = ".";
 	char listening_msg[128] = "Listening to radio";
-	char done[128] = "Done broadcast";
 	bool listen_bool = false;
 
 	discBool = false;
@@ -1025,8 +1050,7 @@ DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 		++counter;
 		Sleep(1000);
 	}
-	wipeScreen(cmdhwnd);
-	printScreen(cmdhwnd, done);
+
 	return 700;
 }
 
