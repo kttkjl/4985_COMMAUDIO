@@ -496,8 +496,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			wipeScreen(cmdhwnd);
 			clearInputs(&clientTgtParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_QUERY_FILE), hwnd, HandleClnQuery);
-			if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
-				requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename);
+			if (clientTgtParams.stream) {
+				if (setupOneToOne())
+			}
+			else {
+				if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
+					requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename);
+				}
 			}
 			break;
 		case ID_CLN_JOINSTREAM:
