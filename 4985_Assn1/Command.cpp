@@ -1083,7 +1083,7 @@ void printLibrary(HWND h) {
 	Rectangle(textScreen, 5, 5, 175, 530);
 
 	//strcpy(szDir, "./");
-	strcpy(szDir, "../x64/Release/Library");
+	strcpy(szDir, "./Library");
 	//strcpy(szDir, "./Library");
 	strcat(szDir, "\\*");
 
