@@ -311,6 +311,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 			if (readBytes == 0) {
 				if (isong == libindex) {
+					fclose(fp);
 					OutputDebugString("Done sending\n");
 					break;
 				}
@@ -321,6 +322,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 					strcpy(songname, "./Library/");
 					strcat(songname, library[isong].c_str());
 
+					fclose(fp);
 					fp = fopen(songname, "rb");
 					readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
 				}
