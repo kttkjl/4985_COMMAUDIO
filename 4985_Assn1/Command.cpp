@@ -290,7 +290,8 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 	//char songname[128]{ "./Library/Faded.wav" };
 	int isong = 0;
 	char songname[128];
-	strcpy(songname, library[isong].c_str());
+	strcpy(songname, "./Library/");
+	strcat(songname, library[isong].c_str());
 	char nowplaying[128]{ "Now Broadcasting: " };
 	char errormsg[128]{ "Broadcast error" };
 	char broadcastdone[128]{ "Broadcast over" };
@@ -317,7 +318,8 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 					++isong;
 					counter = 0;
 					memset(songname, 0, sizeof(songname));
-					strcpy(songname, library[isong].c_str());
+					strcpy(songname, "./Library/");
+					strcat(songname, library[isong].c_str());
 
 					fp = fopen(songname, "rb");
 					readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
@@ -1083,8 +1085,8 @@ void printLibrary(HWND h) {
 	Rectangle(textScreen, 5, 5, 175, 530);
 
 	//strcpy(szDir, "./");
-	strcpy(szDir, "../x64/Release/Library");
-	//strcpy(szDir, "./Library");
+	//strcpy(szDir, "../x64/Release/Library");
+	strcpy(szDir, "./Library");
 	strcat(szDir, "\\*");
 
 	hFind = FindFirstFile(szDir, &ffd);

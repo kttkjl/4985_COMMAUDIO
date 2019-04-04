@@ -367,7 +367,6 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 		ExitProcess(10);
 	}
 
-
 	while (TRUE) {
 		int addr_size = sizeof(struct sockaddr_in);
 
