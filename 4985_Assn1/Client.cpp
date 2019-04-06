@@ -1,17 +1,5 @@
 #include "Client.h"
 
-#define CHUNK_SIZE 8192
-#define CHUNK_NUM 3000
-
-static WAVEHDR* allocateBufferMemory();
-static void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size);
-static void CALLBACK waveOutProc(HWAVEOUT, UINT, DWORD, DWORD, DWORD);
-
-static volatile int			waveFreeBlockCount;
-static int					waveCurrentBlock;
-static CRITICAL_SECTION		mutex;
-static WAVEHDR*				chunkBuffer;
-
 struct ip_mreq				stMreq;
 SOCKADDR_IN					lclAddr, srcAddr;
 LPSOCKET_INFORMATION		SI;
@@ -80,7 +68,14 @@ void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size)
 		LeaveCriticalSection(&mutex);
 
 		while (!waveFreeBlockCount) {
-			Sleep(10);
+			std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+
+			while (time_span.count() <= 0.01) {
+				end = std::chrono::high_resolution_clock::now();
+				time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+			}
 		}
 
 		waveCurrentBlock++;
@@ -106,13 +101,13 @@ int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN 
 	// Startup
 	if ((err = WSAStartup(0x0202, wsaData)) != 0) //No usable DLL
 	{
-		//printf("DLL not found!\n");
-		exit(err);
+		OutputDebugString("DLL not found!\n");
+		return err;
 	}
 	// Create Socket
 	if ((*sock = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
 	{
-		exit(600);
+		return 600;
 	}
 	// Set sockaddr
 	memset((char *)tgtAddr, 0, sizeof(SOCKADDR_IN));
@@ -125,11 +120,10 @@ int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN 
 	}
 	memcpy((char *)&tgtAddr->sin_addr, hp->h_addr, hp->h_length);
 
-	// Don't deal with buffers here
 	return 0;
 }
 
-int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) {
+int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, HWND h) {
 	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
 		OutputDebugString("GlobalAlloc() failed\n");
 		return 1;
@@ -155,8 +149,6 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 		}
 	}
 	// Request file to server
-	OutputDebugString(fileName);
-	OutputDebugString("\r");
 	if (WSASend(*sock, &(SI->DataBuf), 1, &(SI->BytesWRITTEN), flags, NULL, NULL)  == SOCKET_ERROR)
 	{
 		if (WSAGetLastError() != WSAEWOULDBLOCK)
@@ -200,7 +192,7 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName) 
 				return 1;
 			}
 		}
-		//OutputDebugString("SleepEX reached cln\n");
+
 		SleepEx(INFINITE, TRUE);
 
 		DWORD readBytes;
@@ -258,16 +250,15 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 
 	// Create receiver socket
 	if ((*sock = WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_OVERLAPPED)) == INVALID_SOCKET) {
-		printf("socket() failed, Err: %d\n", WSAGetLastError());
 		MessageBox(NULL, "WSASocket error", "all not ok", MB_OK);
+		OutputDebugString(convertErrString("socket() failed, Err:", WSAGetLastError()));
 		WSACleanup();
 		return WSAGetLastError();
 	}
 
 	BOOL fFlag = TRUE;
 	if (setsockopt(*sock, SOL_SOCKET, SO_REUSEADDR, (char *)&fFlag, sizeof(fFlag) == SOCKET_ERROR)) {
-		printf("setsockopt() SO_REUSEADDR failed, Err: %d\n",
-			WSAGetLastError());
+		OutputDebugString(convertErrString("setsockopt() SO_REDUSEADDR failed, Err:", WSAGetLastError()));
 		return WSAGetLastError();
 	}
 
@@ -276,8 +267,7 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 	lclAddr.sin_port = htons(atoi(qp->portStr));
 	
 	if (bind(*sock, (struct sockaddr*)&lclAddr, sizeof(lclAddr)) != 0) {
-		printf("bind() port: %s failed, Err: %d\n", qp->portStr, WSAGetLastError());
-		OutputDebugString("bind error\n");
+		OutputDebugString(convertErrString("bind() port Err:", WSAGetLastError()));
 		return WSAGetLastError();
 	}
 
@@ -285,10 +275,7 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 	stMreq.imr_interface.s_addr = INADDR_ANY;
 
 	if (setsockopt(*sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
-		printf(
-			"setsockopt() IP_ADD_MEMBERSHIP address %s failed, Err: %d\n",
-			qp->addrStr, WSAGetLastError());
-		OutputDebugString("setsockopt() IP_ADD_MEMBERSHIP address\n");
+		OutputDebugString(convertErrString("setsockopt() IP_ADD_MEMBERSHIP address, Err:", WSAGetLastError()));
 		return 800;
 	}
 
@@ -302,10 +289,11 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 --
 --    REVISIONS :
 --    		(MAR 19, 2019): Created
+--			(MAR 27, 2019): Play audio received (Simon)
 --
 --    DESIGNER : Alexander Song
 --
---    PROGRAMMER : Alexander Song
+--    PROGRAMMER : Alexander Song, Simon Chen
 --
 --    INTERFACE : void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd)
 --			LPQueryParams qp:		A special struct that holds the inputted params submitted by user
@@ -317,7 +305,7 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 --    NOTES :
 --			This function contains the WSARecvFrom call. The client will constantly be trying to receive
 --			any incoming datagrams through overlapped and completion routine IO.
---			When a datagram is received, it will be read and process.
+--			When a datagram is received, it will be read and play the sound in the packets.
 ----------------------------------------------------------------------------------------------------------------------*/
 void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 {
@@ -372,17 +360,11 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 
 		if (WSARecvFrom(*sock, &(SI->DataBuf), 1, NULL, &flags, (SOCKADDR *)& srcAddr, &addr_size, &SI->Overlapped, completeCallback) != 0) {
 			if (WSAGetLastError() != WSA_IO_PENDING) {
-				OutputDebugString("IO ERROR \n error no ");
-				char err[20];
-				_itoa(WSAGetLastError(), err, 10);
-				OutputDebugString(err);
+				OutputDebugString(convertErrString("IO error, Err:", WSAGetLastError()));
 
 				// Get last thing in buffer
 				char temp_buf[AUD_BUF_SIZE]{ 0 };
 				memcpy(temp_buf, SI->Buffer, SI->BytesRECV);
-				char cstr[256];
-				sprintf(cstr, "Total Bytes Recv'd: %d\n", SI->totalBytesTransferred);
-				OutputDebugString(cstr);
 
 				// Reset
 				closesocket(*sock);
@@ -392,25 +374,14 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 			}
 		}
 
-		//SetTimer(hwnd, IDT_TIMER, 10000, (TIMERPROC)NULL);
-		//SetTimer(hwnd, IDT_TIMER2, 10000, TimerProc);
-		//if (discBool) break;
 		SleepEx(INFINITE, TRUE);
-		//KillTimer(hwnd, IDT_TIMER);
-		//KillTimer(hwnd, IDT_TIMER2);
 
 		addtoBufferAndPlay(hWaveOut, SI->DataBuf.buf, SI->DataBuf.len);
 
 	} // end of infinite loop
 
 	//wait for sound to finish playing
-	while (waveFreeBlockCount < CHUNK_NUM) {
-		/*auto start = std::clock();
-		while ((std::clock() - start) != 10) { }*/
-
-		//auto end = std::chrono::system_clock::now();
-		//Sleep(10);
-	}
+	while (waveFreeBlockCount < CHUNK_NUM) {}
 
 	//unprepare all chunks
 	for (int i = 0; i < waveFreeBlockCount; i++) {
@@ -428,20 +399,11 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 	stMreq.imr_multiaddr.s_addr = inet_addr(qp->addrStr);
 	stMreq.imr_interface.s_addr = INADDR_ANY;
 	if (setsockopt(*sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&stMreq, sizeof(stMreq)) == SOCKET_ERROR) {
-		printf("setsockopt() IP_DROP_MEMBERSHIP address %s failed, Err: %d\n",
-			qp->addrStr, WSAGetLastError());
+		OutputDebugString(convertErrString("setsockopt() IP_DROP_MEMBERSHIP address failed, Err:", WSAGetLastError()));
 	}
 
 	closesocket(*sock);
 
 	/* Tell WinSock we're leaving */
 	WSACleanup();
-}
-
-void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
-	OutputDebugString("timerproc\n");
-	//TerminateThread(h_thread_accept, 200);
-	//closesocket(*s_sock);
-	//GlobalFree(SI);
-	//WSACleanup();
 }
