@@ -84,7 +84,7 @@ int xPosition;
 int yPosition;
 
 u_long lTTL;
-std::string library[128];
+std::string library[TEXT_BUF_SIZE];
 int libindex = -1;
 
 /*------------------------------------------------------------------------------------------------------------------
@@ -272,12 +272,14 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 	FILE *fp;
 	int isong = 0;
-	char songname[128];
+	char songname[TEXT_BUF_SIZE];
+	char name[TEXT_BUF_SIZE];
+	strcpy(name, library[isong].c_str());
 	strcpy(songname, "./Library/");
 	strcat(songname, library[isong].c_str());
-	char nowplaying[128]{ "Now Broadcasting: " };
-	char errormsg[128]{ "Broadcast error" };
-	char broadcastdone[128]{ "Broadcast over" };
+	char nowplaying[TEXT_BUF_SIZE]{ "Now Broadcasting: " };
+	char errormsg[TEXT_BUF_SIZE]{ "Broadcast error" };
+	char broadcastdone[TEXT_BUF_SIZE]{ "Broadcast over" };
 	fp = fopen(songname, "rb");
 
 	discBool = false;
@@ -302,8 +304,10 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 					++isong;
 					counter = 0;
 					memset(songname, 0, sizeof(songname));
+					memset(name, 0, sizeof(name));
 					strcpy(songname, "./Library/");
 					strcat(songname, library[isong].c_str());
+					strcpy(name, library[isong].c_str());
 
 					fclose(fp);
 					fp = fopen(songname, "rb");
@@ -332,7 +336,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 					set_print_x(380);
 					set_print_y(200);
 					printScreen(cmdhwnd, nowplaying);
-					printScreen(cmdhwnd, songname);
+					printScreen(cmdhwnd, name);
 				}
 			}
 
@@ -471,7 +475,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	WPARAM wParam, LPARAM lParam)
 {
-	char done[128] = "Done broadcast";
+	char done[TEXT_BUF_SIZE] = "Done broadcast";
 
 	switch (message)
 	{
@@ -1022,7 +1026,7 @@ DWORD WINAPI runUDPRecvthread(LPVOID recv) {
 DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 	int counter = 0;
 	char dot[2] = ".";
-	char listening_msg[128] = "Listening to radio";
+	char listening_msg[TEXT_BUF_SIZE] = "Listening to radio";
 	bool listen_bool = false;
 
 	discBool = false;
@@ -1086,8 +1090,8 @@ void printLibrary(HWND h) {
 	size_t length_of_arg;
 	HANDLE hFind = INVALID_HANDLE_VALUE;
 	DWORD dwError = 0;
-	char r[128] = "\r";
-	char nosongs[128] = "No songs";
+	char r[TEXT_BUF_SIZE] = "\r";
+	char nosongs[TEXT_BUF_SIZE] = "No songs";
 
 	Rectangle(textScreen, 5, 5, 175, 530);
 
