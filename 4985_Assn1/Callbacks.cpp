@@ -2,6 +2,26 @@
 
 HWND hwnd;
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: set_hwnd
+--
+--    DATE : MAR 29, 2019
+--
+--    REVISIONS :
+--			(MAR 29, 2019): Created
+--
+--    DESIGNER :	Alexander Song
+--
+--    PROGRAMMER :	Alexander Song
+--
+--    INTERFACE : void set_hwnd(HWND h)
+--			HWND h:	the main window handle
+--
+--    RETURNS : void
+--
+--    NOTES :
+--			Call this to set the window handle for callback functions to use.
+---------------------------------------------------------------------------------------------------------------------*/
 void set_hwnd(HWND h)
 {
 	hwnd = h;
@@ -21,7 +41,6 @@ void CALLBACK recvFileReqCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 	strcpy(filename, SI->Buffer);
 	char cstr[DATA_BUF_SIZE];
 	sprintf(cstr, "File name requested: %s\n", filename);
-	//SI->totalBytesTransferred += countActualBytes(SI->DataBuf.buf, BytesTransferred);
 	OutputDebugString(cstr);
 }
 
@@ -39,7 +58,6 @@ void CALLBACK clnRecvFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 	SI->BytesRECV = BytesTransferred;
 	sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
 	SI->totalBytesTransferred += SI->BytesRECV;
-	//SI->totalBytesTransferred += countActualBytes(SI->DataBuf.buf, BytesTransferred);
 	OutputDebugString(cstr);
 }
 
@@ -68,6 +86,7 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 --
 --    REVISIONS :
 --    		(MAR 17, 2019): Created
+--			(APR 4, 2019): clean up
 --
 --    DESIGNER : Jacky Li, Alexander Song
 --
@@ -93,10 +112,5 @@ void CALLBACK completeCallback(DWORD dwError, DWORD cbTransferred, LPWSAOVERLAPP
 
 	char cstr[AUD_BUF_SIZE];
 	SI->BytesRECV = countActualBytes(SI->DataBuf.buf, cbTransferred);
-	//sprintf(cstr, "BytesRecv'd: %d\n", SI->BytesRECV);
 	SI->totalBytesTransferred += SI->BytesRECV;
 }
-
-//void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
-//
-//}

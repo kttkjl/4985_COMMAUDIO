@@ -15,9 +15,19 @@
 #include "Callbacks.h"
 #include "command.h"
 
+#define CHUNK_SIZE 8192
+#define CHUNK_NUM 3000
+
 int setupTCPCln(LPQueryParams, SOCKET *, WSADATA *, SOCKADDR_IN *);
 int setupUDPCln(LPQueryParams, SOCKET *, WSADATA *);
-int requestTCPFile(SOCKET * , SOCKADDR_IN *, const char *);
+int requestTCPFile(SOCKET * , SOCKADDR_IN *, const char *, HWND);
 void joiningStream(LPQueryParams, SOCKET *, HWND, bool *);
 
-//void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+static WAVEHDR* allocateBufferMemory();
+static void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size);
+static void CALLBACK waveOutProc(HWAVEOUT, UINT, DWORD, DWORD, DWORD);
+
+static volatile int			waveFreeBlockCount;
+static int					waveCurrentBlock;
+static CRITICAL_SECTION		mutex;
+static WAVEHDR*				chunkBuffer;

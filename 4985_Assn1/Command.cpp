@@ -35,7 +35,7 @@
 	--	
 	--	DESIGNER : Jacky Li, Alexander Song, Simon Chen
 	--	
-	--	PROGRAMMER : Jacky Li, Alexander Song
+	--	PROGRAMMER : Jacky Li, Alexander Song, Simon Chen
 	--	
 	--	NOTES :
 	--		The program will listen on sockets using TCP/UDP protocol, and collect statistics on the transaction
@@ -46,11 +46,8 @@
 #include "command.h"
 #include "Client.h"
 
-#define PACKET_SIZE 8192
-
-static TCHAR CmdModName[] = TEXT("Team6 CommAudio");
+TCHAR CmdModName[] = TEXT("Team6 CommAudio");
 HWND cmdhwnd; // Window handler for main window
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 // Query params, along with file
 QueryParams serverTCPParams;
@@ -61,16 +58,6 @@ QueryParams clientTgtParams;
 // Packet size
 char * sbuf;
 int buflen;
-
-// Custom functions
-int runUdpLoop(SOCKET s, bool upload);
-void printScreen(HWND hwnd, char *buffer);
-
-// Thread functions
-DWORD WINAPI runTCPthread(LPVOID upload);
-DWORD WINAPI runUDPthread(LPVOID upload);
-DWORD WINAPI runAcceptThread(LPVOID acceptSocket);
-DWORD WINAPI runUDPRecvthread(LPVOID recv);
 
 // WSA Events, only need write_event for now
 SOCKET				ListenSocket;
@@ -97,8 +84,7 @@ int xPosition;
 int yPosition;
 
 u_long lTTL;
-bool doneplaying = false;
-std::string library[128];
+std::string library[TEXT_BUF_SIZE];
 int libindex = -1;
 
 /*------------------------------------------------------------------------------------------------------------------
@@ -154,7 +140,6 @@ int setupTCPSrv() {
 		OutputDebugString(convertErrString("bind() failed with error\n", WSAGetLastError()));
 		return 601;
 	}
-
 
 	return 0;
 }
@@ -286,15 +271,15 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 	SI->DataBuf.len = PACKET_SIZE;
 
 	FILE *fp;
-	//char songname[128]{ "song.wav" };
-	//char songname[128]{ "./Library/Faded.wav" };
 	int isong = 0;
-	char songname[128];
+	char songname[TEXT_BUF_SIZE];
+	char name[TEXT_BUF_SIZE];
+	strcpy(name, library[isong].c_str());
 	strcpy(songname, "./Library/");
 	strcat(songname, library[isong].c_str());
-	char nowplaying[128]{ "Now Broadcasting: " };
-	char errormsg[128]{ "Broadcast error" };
-	char broadcastdone[128]{ "Broadcast over" };
+	char nowplaying[TEXT_BUF_SIZE]{ "Now Broadcasting: " };
+	char errormsg[TEXT_BUF_SIZE]{ "Broadcast error" };
+	char broadcastdone[TEXT_BUF_SIZE]{ "Broadcast over" };
 	fp = fopen(songname, "rb");
 
 	discBool = false;
@@ -319,8 +304,10 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 					++isong;
 					counter = 0;
 					memset(songname, 0, sizeof(songname));
+					memset(name, 0, sizeof(name));
 					strcpy(songname, "./Library/");
 					strcat(songname, library[isong].c_str());
+					strcpy(name, library[isong].c_str());
 
 					fclose(fp);
 					fp = fopen(songname, "rb");
@@ -349,7 +336,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 					set_print_x(380);
 					set_print_y(200);
 					printScreen(cmdhwnd, nowplaying);
-					printScreen(cmdhwnd, songname);
+					printScreen(cmdhwnd, name);
 				}
 			}
 
@@ -449,7 +436,6 @@ void wipeScreen(HWND hwnd) {
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
 	LPSTR lspszCmdParam, int nCmdShow)
 {
-	//HWND connecthwnd;
 	MSG Msg;
 	WNDCLASSEX Wcl;
 
@@ -489,7 +475,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	WPARAM wParam, LPARAM lParam)
 {
-	char done[128] = "Done broadcast";
+	char done[TEXT_BUF_SIZE] = "Done broadcast";
 
 	switch (message)
 	{
@@ -515,13 +501,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			wipeScreen(cmdhwnd);
 			clearInputs(&clientTgtParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_QUERY_FILE), hwnd, HandleClnQuery);
-			if (clientTgtParams.stream) {
-				//if (setupOneToOne())
-			}
-			else {
-				if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
-					requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename);
-				}
+			if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
+				requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename, cmdhwnd);
 			}
 			break;
 		case ID_CLN_JOINSTREAM:
@@ -535,22 +516,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			break;
 		case ID_GEN_DISCONNECT:
 			discBool = true;
-			break;
-		}
-		break;
-	case WM_TIMER:
-		switch (wParam)
-		{
-		case IDT_TIMER:
-			OutputDebugString("timedout\n");
-			discBool = true;
-			TerminateThread(pb_print_thread, 700);
-			wipeScreen(cmdhwnd);
-			printScreen(cmdhwnd, done);
-			break;
-		case IDT_TIMER2:
-			OutputDebugString("timedout2\n");
-			TerminateThread(h_thread_accept, 200);
 			break;
 		}
 		break;
@@ -597,8 +562,6 @@ INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARA
 	// Variables
 	HWND idd_packetsize;
 	const int packetSizes[] = { 1024, 4096, 20000, 60000 };
-
-	// Reset global queryResult
 
 	// Init error variable
 	unsigned int err = 0;
@@ -867,11 +830,6 @@ DWORD WINAPI runTCPthread(LPVOID upload) {
 			return 404;
 		}
 		else {
-			OutputDebugString("Accepted\n");
-			char buf[128]{"Accepted client"};
-			char r[1]{ '\r' };
-			printScreen(cmdhwnd, buf);
-			printScreen(cmdhwnd, r);
 			if ((h_thread_accept = CreateThread(NULL, 0, runAcceptThread, (LPVOID)AcceptSocket, 0, &thread_accept_id)) == NULL) {
 				return 405;
 			}
@@ -883,7 +841,6 @@ DWORD WINAPI runTCPthread(LPVOID upload) {
 // SRV: For TCP transfer of files
 DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	OutputDebugString("Running Accept thread\n");
-	// Thread variables
 
 	// Current socket information
 	DWORD Flags = 0;
@@ -894,7 +851,6 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	}
 	SocketInfo->totalBytesTransferred = 0;
 	// Wait for Client
-	// SocketInfo population
 	SocketInfo->Buffer = (char *)malloc(DATA_BUF_SIZE);
 	memset(SocketInfo->Buffer, 0, sizeof(char) * DATA_BUF_SIZE);
 	SocketInfo->DataBuf.len = DATA_BUF_SIZE;
@@ -913,7 +869,6 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 		{
 			char cstr[DATA_BUF_SIZE];
 			char cr[1]{ '\r' };
-			sprintf(cstr, "Recv filename failed: %d", WSAGetLastError());
 			OutputDebugString(convertErrString("Recv filename failed: ", WSAGetLastError()));
 			printScreen(cmdhwnd, cstr);
 			printScreen(cmdhwnd, cr);
@@ -927,23 +882,20 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	// Get Filename
 	FILE *fptr;
 	errno_t err;
-	char filename[DATA_BUF_SIZE];
+	char filename[DATA_BUF_SIZE] = "./Library/";
+	char reqfile[DATA_BUF_SIZE];
 	char relativePath[DATA_BUF_SIZE];
-	strcpy(filename, SocketInfo->Buffer);
+	strcpy(reqfile, SocketInfo->Buffer);
+	strcat(filename, SocketInfo->Buffer);
 	_getcwd(relativePath, DATA_BUF_SIZE);
 	std::string fullPath = relativePath;
 	fullPath.append("\\");
 	fullPath.append(filename);
 	
-	OutputDebugString(fullPath.c_str());
-	OutputDebugString("\n");
 	if ((err = fopen_s(&fptr, fullPath.c_str(), "rb") != 0)) {
 		OutputDebugString("file open error");
 		exit(404);
 	}
-
-	// Reset the buffer
-	//memset(SocketInfo->Buffer, 0, DATA_BUF_SIZE);
 
 	// Send loop, probably
 	DWORD readBytes;
@@ -969,32 +921,19 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 		SocketInfo->BytesWRITTEN = 0;
 	}
 	// Show progress of final
-	char pstr[128];
-	char totalSentStr[128];
 	char cr[1]{ '\r' };
 
 	OutputDebugString(convertErrString("final readBytes:", readBytes));
 	SocketInfo->DataBuf.len = readBytes;
-	//Send last thing
-	//if (WSASend((SOCKET)acceptSocket, &(SocketInfo->DataBuf), 1, NULL, Flags, &(SocketInfo->Overlapped), srvSentFileCallback) == SOCKET_ERROR)
-	//{
-	//	int last_err = WSAGetLastError();
-	//	if (!(last_err == WSA_IO_PENDING || last_err == WSAEWOULDBLOCK))
-	//	{
-	//		OutputDebugString("WSASend failed, not WOULDBLOCK\n");
-	//		return 1;
-	//	}
-	//}
-	//SleepEx(INFINITE, TRUE);
 
+	// Print transfer stats
 	char cstr[DATA_BUF_SIZE];
-	sprintf(cstr, "Total Bytes Sent'd: %d\n", SocketInfo->totalBytesTransferred);
-	OutputDebugString(cstr);
-
-	printScreen(cmdhwnd, filename);
-	//Print final sent stats
-	sprintf(totalSentStr, "Total sent: %lu\n", SocketInfo->totalBytesTransferred);
-	printScreen(cmdhwnd, totalSentStr);
+	char cstr2[DATA_BUF_SIZE];
+	sprintf(cstr, "Total Bytes Sent: %d\n", SocketInfo->totalBytesTransferred);
+	printScreen(cmdhwnd, cstr);
+	printScreen(cmdhwnd, cr);
+	sprintf(cstr2, "File sent: %s\n", reqfile);
+	printScreen(cmdhwnd, cstr2);
 	printScreen(cmdhwnd, cr);
 
 	closesocket(SocketInfo->Socket);
@@ -1005,10 +944,10 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: runUDPthread
 --
---    DATE : FEB 12, 2019
+--    DATE : MAR 12, 2019
 --
 --    REVISIONS :
---    		(FEB 12, 2019): Created
+--    		(MAR 12, 2019): Created
 --			(MAR 19, 2019): Edited to fit comm audio server
 --
 --    DESIGNER : Jacky Li, Alexander Song
@@ -1032,20 +971,62 @@ DWORD WINAPI runUDPthread(LPVOID upload) {
 			break;
 		}
 	}
-	doneplaying = true;
 	return 200;
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: runUDPthread
+--
+--    DATE : MAR 21, 2019
+--
+--    REVISIONS :
+--    		(MAR 21, 2019): Created
+--
+--    DESIGNER : Alexander Song
+--
+--    PROGRAMMER : Alexander Song
+--
+--    INTERFACE : DWORD WINAPI runUDPRecvthread(LPVOID recv)
+--			LPVOID recv:		(HWND) Passing the main window handle
+--
+--    RETURNS : DWORD
+--			200 on completion
+--
+--    NOTES :
+--			Thread function for a client to join the stream
+----------------------------------------------------------------------------------------------------------------------*/
 DWORD WINAPI runUDPRecvthread(LPVOID recv) {
 	joiningStream(&clientUDPParams, &ClientSocket, (HWND) recv, &discBool);
 	OutputDebugString("Finished runUDPRecvthread\n");
 	return 200;
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: printSoundProgress
+--
+--    DATE : MAR 29, 2019
+--
+--    REVISIONS :
+--    		(MAR 29, 2019): Created
+--
+--    DESIGNER : Alexander Song
+--
+--    PROGRAMMER : Alexander Song
+--
+--    INTERFACE : DWORD WINAPI printSoundProgress(LPVOID hwnd)
+--			LPVOID hwnd:	(HWND) Passing the main window handle
+--
+--    RETURNS : DWORD
+--			700 on completion
+--
+--    NOTES :
+--			Thread function to print an updating text in the window to show streaming is in session.
+----------------------------------------------------------------------------------------------------------------------*/
+
 DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 	int counter = 0;
 	char dot[2] = ".";
-	char listening_msg[128] = "Listening to radio";
+	char listening_msg[TEXT_BUF_SIZE] = "Listening to radio";
 	bool listen_bool = false;
 
 	discBool = false;
@@ -1067,11 +1048,39 @@ DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 
 		printScreen(cmdhwnd, dot);
 		++counter;
-		Sleep(1000);
+		std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+		std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+
+		while (time_span.count() <= 1) {
+			end = std::chrono::high_resolution_clock::now();
+			time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+		}
 	}
 
 	return 700;
 }
+
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: printLibrary
+--
+--    DATE : MAR 31, 2019
+--
+--    REVISIONS :
+--    		(MAR 31, 2019): Created
+--
+--    DESIGNER : Alexander Song
+--
+--    PROGRAMMER : Alexander Song
+--
+--    INTERFACE : void printLibrary(HWND h)
+--			HWND h:		Main window handle
+--
+--    RETURNS : void
+--
+--    NOTES :
+--			Call this to print the files in the Library directory
+----------------------------------------------------------------------------------------------------------------------*/
 
 void printLibrary(HWND h) {
 	WIN32_FIND_DATA ffd;
@@ -1081,13 +1090,11 @@ void printLibrary(HWND h) {
 	size_t length_of_arg;
 	HANDLE hFind = INVALID_HANDLE_VALUE;
 	DWORD dwError = 0;
-	char r[128] = "\r";
-	char nosongs[128] = "No songs";
+	char r[TEXT_BUF_SIZE] = "\r";
+	char nosongs[TEXT_BUF_SIZE] = "No songs";
 
 	Rectangle(textScreen, 5, 5, 175, 530);
 
-	//strcpy(szDir, "./");
-	//strcpy(szDir, "../x64/Release/Library");
 	strcpy(szDir, "./Library");
 	strcat(szDir, "\\*");
 
@@ -1095,12 +1102,11 @@ void printLibrary(HWND h) {
 
 	if (INVALID_HANDLE_VALUE == hFind)
 	{
-		DisplayErrorBox(TEXT("FindFirstFile"));
+		MessageBox(NULL, "Something went wrong", "Handle error", MB_OK);
 		return;
 	}
 
 	// List all the files in the directory with some info about them.
-
 	set_print_x(7);
 	set_print_y(7);
 
@@ -1124,46 +1130,34 @@ void printLibrary(HWND h) {
 	dwError = GetLastError();
 	if (dwError != ERROR_NO_MORE_FILES)
 	{
-		DisplayErrorBox(TEXT("FindFirstFile"));
+		MessageBox(NULL, "No songs in library", "Empty Library", MB_OK);
 	}
 
 	FindClose(hFind);
-	//return dwError;
 }
 
-
-void DisplayErrorBox(LPCSTR lpszFunction)
-{
-	// Retrieve the system error message for the last-error code
-
-	LPVOID lpMsgBuf;
-	LPVOID lpDisplayBuf;
-	DWORD dw = GetLastError();
-
-	FormatMessage(
-		FORMAT_MESSAGE_ALLOCATE_BUFFER |
-		FORMAT_MESSAGE_FROM_SYSTEM |
-		FORMAT_MESSAGE_IGNORE_INSERTS,
-		NULL,
-		dw,
-		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-		(LPTSTR)&lpMsgBuf,
-		0, NULL);
-
-	// Display the error message and clean up
-
-	lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
-		(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
-	StringCchPrintf((LPTSTR)lpDisplayBuf,
-		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-		TEXT("%s failed with error %d: %s"),
-		lpszFunction, dw, lpMsgBuf);
-	MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
-
-	LocalFree(lpMsgBuf);
-	LocalFree(lpDisplayBuf);
-}
-
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: modPrintScreen
+--
+--    DATE : MAR 29, 2019
+--
+--    REVISIONS :
+--    		(MAR 29, 2019): Created
+--
+--    DESIGNER : Jacky Li, Alexander Song
+--
+--    PROGRAMMER : Alexander Song
+--
+--    INTERFACE : void modPrintScreen(HWND hwnd, char *buffer, int startX)
+--			HWND h:					Main window handle
+--			char *buffer:			Buffer containing string to be printed
+--			int startX:				Starting X position for the string
+--
+--    RETURNS : void
+--
+--    NOTES :
+--			Call this to print a string to the main window at a specific X position
+----------------------------------------------------------------------------------------------------------------------*/
 void modPrintScreen(HWND hwnd, char *buffer, int startX) {
 	HDC textScreen = GetDC(hwnd);
 	SIZE size;
@@ -1182,6 +1176,7 @@ void modPrintScreen(HWND hwnd, char *buffer, int startX) {
 	xPosition = xPosition + size.cx + 1;
 	ReleaseDC(hwnd, textScreen);
 }
+
 
 void set_print_x(int x) {
 	xPosition = x;
