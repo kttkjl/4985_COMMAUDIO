@@ -878,9 +878,11 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	// Get Filename
 	FILE *fptr;
 	errno_t err;
-	char filename[DATA_BUF_SIZE];
+	char filename[DATA_BUF_SIZE] = "./Library/";
+	char reqfile[DATA_BUF_SIZE];
 	char relativePath[DATA_BUF_SIZE];
-	strcpy(filename, SocketInfo->Buffer);
+	strcpy(reqfile, SocketInfo->Buffer);
+	strcat(filename, SocketInfo->Buffer);
 	_getcwd(relativePath, DATA_BUF_SIZE);
 	std::string fullPath = relativePath;
 	fullPath.append("\\");
@@ -926,7 +928,7 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	sprintf(cstr, "Total Bytes Sent: %d\n", SocketInfo->totalBytesTransferred);
 	printScreen(cmdhwnd, cstr);
 	printScreen(cmdhwnd, cr);
-	sprintf(cstr2, "File sent: %s\n", filename);
+	sprintf(cstr2, "File sent: %s\n", reqfile);
 	printScreen(cmdhwnd, cstr2);
 	printScreen(cmdhwnd, cr);
 
