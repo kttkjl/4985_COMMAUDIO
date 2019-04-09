@@ -86,6 +86,7 @@ int yPosition;
 u_long lTTL;
 std::string library[TEXT_BUF_SIZE];
 int libindex = -1;
+bool clientStream = true;
 
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupTCPSrv
@@ -506,6 +507,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			}
 			break;
 		case ID_CLN_JOINSTREAM:
+			clientStream = true;
 			wipeScreen(cmdhwnd);
 			clearInputs(&clientUDPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_JOINBROADCAST), hwnd, HandleClnJoin);
@@ -517,7 +519,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 		case ID_GEN_DISCONNECT:
 			discBool = true;
 			break;
+		case ID_CLN_DISCONNECT:
+			clientStream = false;
+			break;
 		}
+	
 		break;
 	case WM_DESTROY:	// Terminate program
 		PostQuitMessage(0);
@@ -1027,11 +1033,12 @@ DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 	int counter = 0;
 	char dot[2] = ".";
 	char listening_msg[TEXT_BUF_SIZE] = "Listening to radio";
+	char dc_msg[TEXT_BUF_SIZE] = "Disconnected from server";
 	bool listen_bool = false;
 
 	discBool = false;
 
-	while (1) {
+	while (clientStream) {
 		if (discBool)
 			break;
 
@@ -1057,7 +1064,8 @@ DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 			time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
 		}
 	}
-
+	wipeScreen(cmdhwnd);
+	printScreen(cmdhwnd, dc_msg);
 	return 700;
 }
 

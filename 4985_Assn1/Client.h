@@ -26,8 +26,10 @@ void joiningStream(LPQueryParams, SOCKET *, HWND, bool *);
 static WAVEHDR* allocateBufferMemory();
 static void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size);
 static void CALLBACK waveOutProc(HWAVEOUT, UINT, DWORD, DWORD, DWORD);
+void updateChunkPosition(WAVEHDR* current);
 
-static volatile int			waveFreeBlockCount;
-static int					waveCurrentBlock;
+static int					chunksAvailable;
+static int					chunkIndicator;
 static CRITICAL_SECTION		mutex;
 static WAVEHDR*				chunkBuffer;
+

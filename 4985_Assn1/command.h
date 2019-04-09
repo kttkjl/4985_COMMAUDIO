@@ -31,6 +31,7 @@
 
 static bool discBool = true;
 
+
 static HANDLE pb_print_thread;
 static DWORD thread_print_id;
 
