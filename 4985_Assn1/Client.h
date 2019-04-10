@@ -20,7 +20,7 @@
 
 int setupTCPCln(LPQueryParams, SOCKET *, WSADATA *, SOCKADDR_IN *);
 int setupUDPCln(LPQueryParams, SOCKET *, WSADATA *);
-int requestTCPFile(SOCKET * , SOCKADDR_IN *, const char *, HWND);
+int requestTCPFile(SOCKET * , SOCKADDR_IN *, const char *, HWND, bool);
 void joiningStream(LPQueryParams, SOCKET *, HWND, bool *);
 
 static WAVEHDR* allocateBufferMemory();

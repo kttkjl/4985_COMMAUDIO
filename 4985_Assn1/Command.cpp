@@ -504,7 +504,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			clearInputs(&clientTgtParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_QUERY_FILE), hwnd, HandleClnQuery);
 			if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
-				requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename, cmdhwnd);
+				requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename, cmdhwnd, clientTgtParams.stream);
 			}
 			break;
 		case ID_CLN_JOINSTREAM:
@@ -525,7 +525,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			clientStream = false;
 			break;
 		case ID_FILE_SELECT:
-			playLocalWaveFile(true);
+			playLocalWaveFile();
 			break;
 		case ID_STOP_MUSIC:
 			stopPlayback();
@@ -547,21 +547,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 --    FUNCTION: playLocalWaveFile()
 --
 --    DATE : April 9, 2019
---
+--			 April 10, 2019 - Added song display (Alex)
 --
 --    DESIGNER : Simon Chen
 --
---    PROGRAMMER : Simon Chen
+--    PROGRAMMER : Simon Chen, Alexander Song
 --
---    INTERFACE : void playLocalWaveFile(bool pick)
---				bool pick - if true, file picker opens
+--    INTERFACE : void playLocalWaveFile()
 --
 --    RETURNS : VOID
 --
 --    NOTES :
 --		prompt user to select a wave file to play. 
 ----------------------------------------------------------------------------------------------------------------------*/
-void playLocalWaveFile(bool pick) {
+void playLocalWaveFile() {
 	
 	OPENFILENAME ofn;
 	::memset(&ofn, 0, sizeof(ofn));
@@ -578,7 +577,11 @@ void playLocalWaveFile(bool pick) {
 	if (::GetOpenFileName(&ofn) != FALSE)
 	{
 		stopPlayback();
+		wipeScreen(cmdhwnd);
 		PlaySound(ofn.lpstrFile, NULL, SND_FILENAME | SND_ASYNC | SND_NOSTOP);
+		char nowplaying[TEXT_BUF_SIZE] = "Now playing: ";
+		strcat(nowplaying, ofn.lpstrFile);
+		printScreen(cmdhwnd, nowplaying);
 	}
 }
 
@@ -586,11 +589,11 @@ void playLocalWaveFile(bool pick) {
 --    FUNCTION: stopPlayback()
 --
 --    DATE : April 9, 2019
---
+--			 April 10, 2019 - Added song display (Alex)
 --
 --    DESIGNER : Simon Chen
 --
---    PROGRAMMER : Simon Chen
+--    PROGRAMMER : Simon Chen, Alexander Song
 --
 --    INTERFACE : void stopPlayback()
 --
@@ -600,6 +603,9 @@ void playLocalWaveFile(bool pick) {
 --		Wrapper for play sound function to stop all music started by played sound in this process.
 ----------------------------------------------------------------------------------------------------------------------*/
 void stopPlayback() {
+	wipeScreen(cmdhwnd);
+	char stopmusic[TEXT_BUF_SIZE] = "Music stopped";
+	printScreen(cmdhwnd, stopmusic);
 	PlaySound(NULL, NULL, 0);
 }
 
