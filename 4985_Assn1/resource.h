@@ -1,9 +1,3 @@
-//{{NO_DEPENDENCIES}}
-// Microsoft Visual C++ generated include file.
-// Used by 4985_Assn1.rc
-//
-#define IDC_4985ASN2SRVMENU             101
-#define IDS_APP_TITLE                   103
 #define IDD_QUERYBOX_SRV                1051
 #define IDD_QUERYBOX_SRV_MULTICAST      1052
 #define IDD_CLN_QUERY_FILE              1053
@@ -28,8 +22,6 @@
 #define ID_FILE_SELECT					60004
 #define ID_STOP_MUSIC					60005
 #define ID_GEN_DISCONNECT				1062
-#define IDT_TIMER						1063
-#define IDT_TIMER2						1064
 
 // Next default values for new objects
 // 
