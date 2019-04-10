@@ -293,7 +293,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 			}
 
 			DWORD readBytes;
-			readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
+			readBytes = (DWORD)fread(buffer, sizeof(char), sizeof(buffer), fp);
 
 			if (readBytes == 0) {
 				if (isong == libindex) {
@@ -312,7 +312,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 
 					fclose(fp);
 					fp = fopen(songname, "rb");
-					readBytes = fread(buffer, sizeof(char), sizeof(buffer), fp);
+					readBytes = (DWORD) fread(buffer, sizeof(char), sizeof(buffer), fp);
 				}
 			}
 
@@ -399,9 +399,9 @@ void printScreen(HWND hwnd, char *buffer) {
 		return;
 	}
 
-	GetTextExtentPoint32(textScreen, buffer, strlen(buffer), &size);
+	GetTextExtentPoint32(textScreen, buffer, (int)strlen(buffer), &size);
 
-	TextOut(textScreen, xPosition, yPosition, buffer, strlen(buffer));
+	TextOut(textScreen, xPosition, yPosition, buffer, (int)strlen(buffer));
 	xPosition = xPosition + size.cx + 1;
 	ReleaseDC(hwnd, textScreen);
 }
@@ -470,7 +470,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance,
 		DispatchMessage(&Msg);
 	}
 
-	return Msg.wParam;
+	return (int)Msg.wParam;
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
@@ -972,13 +972,16 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	
 	if ((err = fopen_s(&fptr, fullPath.c_str(), "rb") != 0)) {
 		OutputDebugString("file open error");
-		exit(404);
+		MessageBox(NULL, "Please enter a valid file name", "File Not Found", MB_OK);
+		closesocket(SocketInfo->Socket);
+		GlobalFree(SocketInfo);
+		return (404);
 	}
 
 	// Send loop, probably
 	DWORD readBytes;
 	char sendBuffer[PACKET_SIZE];
-	while ((readBytes = fread(sendBuffer, sizeof(char), sizeof(sendBuffer), fptr)) >0) {
+	while ((readBytes = (DWORD) fread(sendBuffer, sizeof(char), sizeof(sendBuffer), fptr)) >0) {
 		SocketInfo->DataBuf.buf = &sendBuffer[0];
 		SocketInfo->DataBuf.len = PACKET_SIZE;
 		// Buffer filled, gotta send whole buffer
@@ -1044,7 +1047,7 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 DWORD WINAPI runUDPthread(LPVOID upload) {
 	printLibrary(cmdhwnd);
 	while (1) {
-		if (runUdpLoop(ListenSocket, (BOOL)upload) == 1 || libindex == -1) {
+		if (runUdpLoop(ListenSocket, upload) == 1 || libindex == -1) {
 			OutputDebugString("runUDPthread exit\n");
 			break;
 		}
@@ -1165,7 +1168,6 @@ void printLibrary(HWND h) {
 	LARGE_INTEGER filesize;
 	HDC textScreen = GetDC(h);
 	char szDir[MAX_PATH];
-	size_t length_of_arg;
 	HANDLE hFind = INVALID_HANDLE_VALUE;
 	DWORD dwError = 0;
 	char r[TEXT_BUF_SIZE] = "\r";
@@ -1248,9 +1250,9 @@ void modPrintScreen(HWND hwnd, char *buffer, int startX) {
 		return;
 	}
 
-	GetTextExtentPoint32(textScreen, buffer, strlen(buffer), &size);
+	GetTextExtentPoint32(textScreen, buffer, (int)strlen(buffer), &size);
 
-	TextOut(textScreen, xPosition, yPosition, buffer, strlen(buffer));
+	TextOut(textScreen, xPosition, yPosition, buffer, (int)strlen(buffer));
 	xPosition = xPosition + size.cx + 1;
 	ReleaseDC(hwnd, textScreen);
 }
