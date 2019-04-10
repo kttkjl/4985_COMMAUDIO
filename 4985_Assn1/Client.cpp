@@ -6,8 +6,6 @@ LPSOCKET_INFORMATION		SI;
 SOCKET *					s_sock;
 extern bool clientStream;
 
-
-
 int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN * tgtAddr) {
 	int err;
 	struct hostent *hp;
@@ -45,7 +43,7 @@ int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN 
 	return 0;
 }
 
-int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, HWND h) {
+int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, HWND h, bool play) {
 	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
 		OutputDebugString("GlobalAlloc() failed\n");
 		return 1;
@@ -111,8 +109,18 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, 
 				closesocket(*sock);
 				GlobalFree(SI);
 				fclose(fp);
+
+				if (play) {
+					stopPlayback();
+					wipeScreen(h);
+					PlaySound(fn.c_str(), NULL, SND_FILENAME | SND_ASYNC | SND_NOSTOP);
+					char nowplaying[TEXT_BUF_SIZE] = "Now playing: ";
+					strcat(nowplaying, fn.c_str());
+					printScreen(h, nowplaying);
+				}
+
 				return 1;
-			}
+			} 
 		}
 
 		SleepEx(INFINITE, TRUE);

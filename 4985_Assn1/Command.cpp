@@ -504,7 +504,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			clearInputs(&clientTgtParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_QUERY_FILE), hwnd, HandleClnQuery);
 			if (setupTCPCln(&clientTgtParams, &ClientSocket, &WSAData, &serverTCP) == 0) {
-				requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename, cmdhwnd);
+				requestTCPFile(&ClientSocket, &serverTCP, clientTgtParams.reqFilename, cmdhwnd, clientTgtParams.stream);
 			}
 			break;
 		case ID_CLN_JOINSTREAM:
@@ -525,7 +525,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			clientStream = false;
 			break;
 		case ID_FILE_SELECT:
-			playLocalWaveFile(true);
+			playLocalWaveFile();
 			break;
 		case ID_STOP_MUSIC:
 			stopPlayback();
@@ -547,21 +547,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 --    FUNCTION: playLocalWaveFile()
 --
 --    DATE : April 9, 2019
---
+--			 April 10, 2019 - Added song display (Alex)
 --
 --    DESIGNER : Simon Chen
 --
---    PROGRAMMER : Simon Chen
+--    PROGRAMMER : Simon Chen, Alexander Song
 --
---    INTERFACE : void playLocalWaveFile(bool pick)
---				bool pick - if true, file picker opens
+--    INTERFACE : void playLocalWaveFile()
 --
 --    RETURNS : VOID
 --
 --    NOTES :
 --		prompt user to select a wave file to play. 
 ----------------------------------------------------------------------------------------------------------------------*/
-void playLocalWaveFile(bool pick) {
+void playLocalWaveFile() {
 	
 	OPENFILENAME ofn;
 	::memset(&ofn, 0, sizeof(ofn));
@@ -578,7 +577,11 @@ void playLocalWaveFile(bool pick) {
 	if (::GetOpenFileName(&ofn) != FALSE)
 	{
 		stopPlayback();
+		wipeScreen(cmdhwnd);
 		PlaySound(ofn.lpstrFile, NULL, SND_FILENAME | SND_ASYNC | SND_NOSTOP);
+		char nowplaying[TEXT_BUF_SIZE] = "Now playing: ";
+		strcat(nowplaying, ofn.lpstrFile);
+		printScreen(cmdhwnd, nowplaying);
 	}
 }
 
@@ -586,11 +589,11 @@ void playLocalWaveFile(bool pick) {
 --    FUNCTION: stopPlayback()
 --
 --    DATE : April 9, 2019
---
+--			 April 10, 2019 - Added song display (Alex)
 --
 --    DESIGNER : Simon Chen
 --
---    PROGRAMMER : Simon Chen
+--    PROGRAMMER : Simon Chen, Alexander Song
 --
 --    INTERFACE : void stopPlayback()
 --
@@ -600,6 +603,9 @@ void playLocalWaveFile(bool pick) {
 --		Wrapper for play sound function to stop all music started by played sound in this process.
 ----------------------------------------------------------------------------------------------------------------------*/
 void stopPlayback() {
+	wipeScreen(cmdhwnd);
+	char stopmusic[TEXT_BUF_SIZE] = "Music stopped";
+	printScreen(cmdhwnd, stopmusic);
 	PlaySound(NULL, NULL, 0);
 }
 
@@ -935,7 +941,6 @@ DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	SocketInfo->BytesWRITTEN = 0;
 	SocketInfo->Overlapped.hEvent = SocketInfo;
 	Flags = 0;
-	// Supposedly WFME, but we woke this thread?
 
 	if (WSARecv((SOCKET)acceptSocket, &(SocketInfo->DataBuf), 1, NULL, &Flags, &(SocketInfo->Overlapped), recvFileReqCallback) == SOCKET_ERROR)
 	{
@@ -1096,7 +1101,6 @@ DWORD WINAPI runUDPRecvthread(LPVOID recv) {
 --    NOTES :
 --			Thread function to print an updating text in the window to show streaming is in session.
 ----------------------------------------------------------------------------------------------------------------------*/
-
 DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 	int counter = 0;
 	char dot[2] = ".";
@@ -1157,7 +1161,6 @@ DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 --    NOTES :
 --			Call this to print the files in the Library directory
 ----------------------------------------------------------------------------------------------------------------------*/
-
 void printLibrary(HWND h) {
 	WIN32_FIND_DATA ffd;
 	LARGE_INTEGER filesize;
@@ -1253,11 +1256,50 @@ void modPrintScreen(HWND hwnd, char *buffer, int startX) {
 	ReleaseDC(hwnd, textScreen);
 }
 
-
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: set_print_x
+--
+--    DATE : MAR 29, 2019
+--
+--    REVISIONS :
+--			(MAR 29, 2019): Created
+--
+--    DESIGNER :	Alexander Song
+--
+--    PROGRAMMER :	Alexander Song
+--
+--    INTERFACE : void set_print_x(int x)
+--			int x: xPosition value to be set
+--
+--    RETURNS : void
+--
+--    NOTES :
+--			Call this to set the xPosition of the main window
+---------------------------------------------------------------------------------------------------------------------*/
 void set_print_x(int x) {
 	xPosition = x;
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: set_print_y
+--
+--    DATE : MAR 29, 2019
+--
+--    REVISIONS :
+--			(MAR 29, 2019): Created
+--
+--    DESIGNER :	Alexander Song
+--
+--    PROGRAMMER :	Alexander Song
+--
+--    INTERFACE : void set_print_y(int y)
+--			int x: xPosition value to be set
+--
+--    RETURNS : void
+--
+--    NOTES :
+--			Call this to set the yPosition of the main window
+---------------------------------------------------------------------------------------------------------------------*/
 void set_print_y(int y) {
 	yPosition = y;
 }
