@@ -43,7 +43,7 @@ void printLibrary(HWND h);
 void clearInputs(LPQueryParams qp);
 void set_print_x(int x);
 void set_print_y(int y);
-void playLocalWaveFile();
+void playLocalWaveFile(bool pick);
 void stopPlayback();
 
 // Custom functions

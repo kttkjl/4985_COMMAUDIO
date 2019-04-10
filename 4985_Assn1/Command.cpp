@@ -87,6 +87,7 @@ u_long lTTL;
 std::string library[TEXT_BUF_SIZE];
 int libindex = -1;
 bool clientStream = true;
+bool localPlaying = false;
 
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupTCPSrv
@@ -524,7 +525,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			clientStream = false;
 			break;
 		case ID_FILE_SELECT:
-			playLocalWaveFile();
+			playLocalWaveFile(true);
 			break;
 		case ID_STOP_MUSIC:
 			stopPlayback();
@@ -552,14 +553,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 --
 --    PROGRAMMER : Simon Chen
 --
---    INTERFACE : void playLocalWaveFile()
+--    INTERFACE : void playLocalWaveFile(bool pick)
+--				bool pick - if true, file picker opens
 --
 --    RETURNS : VOID
 --
 --    NOTES :
 --		prompt user to select a wave file to play. 
 ----------------------------------------------------------------------------------------------------------------------*/
-void playLocalWaveFile() {
+void playLocalWaveFile(bool pick) {
 	
 	OPENFILENAME ofn;
 	::memset(&ofn, 0, sizeof(ofn));
