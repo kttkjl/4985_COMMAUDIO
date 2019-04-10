@@ -25,6 +25,8 @@
 #define ID_CLN_JOINSTREAM               60001
 #define ID_CLN_DISCONNECT				60002
 #define ID_SRV_DISCONNECT				60003
+#define ID_FILE_SELECT					60004
+#define ID_STOP_MUSIC					60005
 #define ID_GEN_DISCONNECT				1062
 #define IDT_TIMER						1063
 #define IDT_TIMER2						1064
