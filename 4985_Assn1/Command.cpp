@@ -87,7 +87,6 @@ u_long lTTL;
 std::string library[TEXT_BUF_SIZE];
 int libindex = -1;
 bool clientStream = true;
-bool localPlaying = false;
 
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupTCPSrv
