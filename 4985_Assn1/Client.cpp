@@ -4,86 +4,8 @@ struct ip_mreq				stMreq;
 SOCKADDR_IN					lclAddr, srcAddr;
 LPSOCKET_INFORMATION		SI;
 SOCKET *					s_sock;
+extern bool clientStream;
 
-static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
-{
-	if (uMsg != WOM_DONE) {
-		//device open 
-		return;
-	}
-		
-	EnterCriticalSection(&mutex);
-	waveFreeBlockCount++;
-	LeaveCriticalSection(&mutex);
-}
-
-WAVEHDR* allocateBufferMemory()
-{
-	unsigned char* buffer;
-	WAVEHDR* chunks;
-	DWORD bufferSize = (CHUNK_SIZE + sizeof(WAVEHDR)) * CHUNK_NUM;
-
-	if ((buffer = (unsigned char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize)) == NULL) {
-		//error when allocating memory
-		ExitProcess(9);
-	}
-
-	chunks = (WAVEHDR*)buffer;
-	buffer += sizeof(WAVEHDR) * CHUNK_NUM;
-
-	for (int i = 0; i < CHUNK_NUM; i++) {
-		chunks[i].dwBufferLength = CHUNK_SIZE;
-		chunks[i].lpData = (char*)buffer;
-		buffer += CHUNK_SIZE;
-	}
-
-	return chunks;
-}
-
-void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size)
-{
-	WAVEHDR* current;
-	int remain;
-	current = &chunkBuffer[waveCurrentBlock];
-
-	while (size > 0) {
-
-		if (current->dwFlags & WHDR_PREPARED)
-			waveOutUnprepareHeader(hWaveOut, current, sizeof(WAVEHDR));
-		if (size < (int)(CHUNK_SIZE - current->dwUser)) {
-			memcpy(current->lpData + current->dwUser, data, size);
-			current->dwUser += size;
-			break;
-		}
-		remain = CHUNK_SIZE - current->dwUser;
-		memcpy(current->lpData + current->dwUser, data, remain);
-		size -= remain;
-		data += remain;
-		current->dwBufferLength = CHUNK_SIZE;
-		waveOutPrepareHeader(hWaveOut, current, sizeof(WAVEHDR));
-		waveOutWrite(hWaveOut, current, sizeof(WAVEHDR));
-
-		EnterCriticalSection(&mutex);
-		waveFreeBlockCount--;
-		LeaveCriticalSection(&mutex);
-
-		while (!waveFreeBlockCount) {
-			std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
-			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
-			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
-
-			while (time_span.count() <= 0.01) {
-				end = std::chrono::high_resolution_clock::now();
-				time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
-			}
-		}
-
-		waveCurrentBlock++;
-		waveCurrentBlock %= CHUNK_NUM;
-		current = &chunkBuffer[waveCurrentBlock];
-		current->dwUser = 0;
-	}
-}
 
 
 int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN * tgtAddr) {
@@ -205,6 +127,86 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, 
 }
 
 /*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: allocateBufferMemory
+--
+--    DATE : MAR 19, 2019
+--
+--
+--    DESIGNER : Simon Chen
+--
+--    PROGRAMMER : Simon Chen
+--
+--    INTERFACE : WAVEHDR* allocateBufferMemory()
+--
+--    RETURNS : WAVEHDR*, memory allocated
+--
+--    NOTES : allocate memory according to CHUNK_NUM and CHUNK_SIZE
+----------------------------------------------------------------------------------------------------------------------*/
+WAVEHDR* allocateBufferMemory()
+{
+	unsigned char* buffer;
+	WAVEHDR* chunks;
+	DWORD bufferSize = (CHUNK_SIZE + sizeof(WAVEHDR)) * CHUNK_NUM;
+
+	if ((buffer = (unsigned char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize)) == NULL) {
+		//error when allocating memory
+		ExitProcess(9);
+	}
+
+	chunks = (WAVEHDR*)buffer;
+	buffer += sizeof(WAVEHDR) * CHUNK_NUM;
+
+	for (int i = 0; i < CHUNK_NUM; i++) {
+		chunks[i].dwBufferLength = CHUNK_SIZE;
+		chunks[i].lpData = (char*)buffer;
+		buffer += CHUNK_SIZE;
+	}
+
+	return chunks;
+}
+
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: updateChunkPosition
+--
+--    DATE : MAR 19, 2019
+--
+--
+--    DESIGNER : Simon Chen
+--
+--    PROGRAMMER : Simon Chen
+--
+--    INTERFACE : void updateChunkPosition(WAVEHDR* index)
+--		index: current buffer location
+--
+--    RETURNS : void
+--
+--    NOTES : update buffer location, if buffer is full wait until at least 1 buffer is free then continue
+----------------------------------------------------------------------------------------------------------------------*/
+void updateChunkPosition(WAVEHDR* index) {
+
+	EnterCriticalSection(&mutex);
+	chunksAvailable--;
+	LeaveCriticalSection(&mutex);
+
+	while (!chunksAvailable) {
+		std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+		std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+
+		while (time_span.count() <= 0.01) {
+			end = std::chrono::high_resolution_clock::now();
+			time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+		}
+	}
+
+	chunkIndicator++;
+	chunkIndicator %= CHUNK_NUM;
+	index = &chunkBuffer[chunkIndicator];
+	index->dwUser = 0;
+}
+
+
+/*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupUDPCln
 --
 --    DATE : MAR 19, 2019
@@ -282,6 +284,52 @@ int setupUDPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData)
 	return 0;
 }
 
+
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: addtoBufferAndPlay
+--
+--    DATE : MAR 19, 2019
+--
+--
+--    DESIGNER : Simon Chen
+--
+--    PROGRAMMER : Simon Chen
+--
+--    INTERFACE : void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size)
+--		hWaveOut: device handle
+--		LPSTR: waveform-audio data
+--		int size of waveform-audio data
+--
+--    RETURNS : void
+--
+--    NOTES : add audio to buffer and queue to play
+----------------------------------------------------------------------------------------------------------------------*/
+void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size)
+{
+	WAVEHDR* index = &chunkBuffer[chunkIndicator];
+	int remain;
+
+	while (size > 0) {
+
+		if (index->dwFlags & WHDR_PREPARED)
+			waveOutUnprepareHeader(hWaveOut, index, sizeof(WAVEHDR));
+		if (size < (int)(CHUNK_SIZE - index->dwUser)) {
+			memcpy(index->lpData + index->dwUser, data, size);
+			index->dwUser += size;
+			break;
+		}
+		remain = CHUNK_SIZE - index->dwUser;
+		memcpy(index->lpData + index->dwUser, data, remain);
+		size -= remain;
+		data += remain;
+		index->dwBufferLength = CHUNK_SIZE;
+		waveOutPrepareHeader(hWaveOut, index, sizeof(WAVEHDR));
+		waveOutWrite(hWaveOut, index, sizeof(WAVEHDR));
+
+		updateChunkPosition(index);
+	}
+}
+
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: joiningStream
 --
@@ -337,8 +385,8 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 
 	//initialize 
 	chunkBuffer = allocateBufferMemory();
-	waveFreeBlockCount = CHUNK_NUM;
-	waveCurrentBlock = 0;
+	chunksAvailable = CHUNK_NUM;
+	chunkIndicator = 0;
 	InitializeCriticalSection(&mutex);
 
 	//default wave header spec
@@ -347,15 +395,15 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 	wfx.nChannels = 2;
 	wfx.cbSize = 0;
 	wfx.wFormatTag = WAVE_FORMAT_PCM;
-	wfx.nBlockAlign = (wfx.wBitsPerSample * wfx.nChannels) >> 3;
+	wfx.nBlockAlign = (wfx.wBitsPerSample * wfx.nChannels) / 8 ;
 	wfx.nAvgBytesPerSec = wfx.nBlockAlign * wfx.nSamplesPerSec;
 
-	if (waveOutOpen(&hWaveOut, WAVE_MAPPER, &wfx, (DWORD_PTR)waveOutProc, (DWORD_PTR)&waveFreeBlockCount, CALLBACK_FUNCTION) != MMSYSERR_NOERROR) {
+	if (waveOutOpen(&hWaveOut, WAVE_MAPPER, &wfx, (DWORD_PTR)waveOutProc, (DWORD_PTR)&chunksAvailable, CALLBACK_FUNCTION) != MMSYSERR_NOERROR) {
 		//error opening playback device
 		ExitProcess(10);
 	}
 
-	while (TRUE) {
+	while (clientStream) {
 		int addr_size = sizeof(struct sockaddr_in);
 
 		if (WSARecvFrom(*sock, &(SI->DataBuf), 1, NULL, &flags, (SOCKADDR *)& srcAddr, &addr_size, &SI->Overlapped, completeCallback) != 0) {
@@ -381,16 +429,19 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 	} // end of infinite loop
 
 	//wait for sound to finish playing
-	while (waveFreeBlockCount < CHUNK_NUM) {}
+	//while (chunksAvailable < CHUNK_NUM) {}
+
+	waveOutPause(hWaveOut);
 
 	//unprepare all chunks
-	for (int i = 0; i < waveFreeBlockCount; i++) {
+	for (int i = 0; i < chunksAvailable; i++) {
 		if (chunkBuffer[i].dwFlags & WHDR_PREPARED) {
 			waveOutUnprepareHeader(hWaveOut, &chunkBuffer[i], sizeof(WAVEHDR));
 		}
 
 	}
 
+	
 	//audio clean up
 	DeleteCriticalSection(&mutex);
 	HeapFree(GetProcessHeap(), 0, chunkBuffer);
@@ -406,4 +457,36 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 
 	/* Tell WinSock we're leaving */
 	WSACleanup();
+}
+
+
+
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: waveOutProc
+--
+--    DATE : MAR 19, 2019
+--
+--
+--    DESIGNER : Simon Chen
+--
+--    PROGRAMMER : Simon Chen
+--
+--    INTERFACE : void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
+--
+--    RETURNS : void
+--
+--    NOTES :
+--			Wavedevice callback function(runs on different thread)
+--			update WAVEHDR array index
+----------------------------------------------------------------------------------------------------------------------*/
+static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
+{
+	if (uMsg != WOM_DONE) {
+		//device open 
+		return;
+	}
+
+	EnterCriticalSection(&mutex);
+	chunksAvailable++;
+	LeaveCriticalSection(&mutex);
 }

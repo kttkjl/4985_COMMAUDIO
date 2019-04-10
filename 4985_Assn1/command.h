@@ -31,6 +31,7 @@
 
 static bool discBool = true;
 
+
 static HANDLE pb_print_thread;
 static DWORD thread_print_id;
 
@@ -42,6 +43,8 @@ void printLibrary(HWND h);
 void clearInputs(LPQueryParams qp);
 void set_print_x(int x);
 void set_print_y(int y);
+void playLocalWaveFile();
+void stopPlayback();
 
 // Custom functions
 int runUdpLoop(SOCKET s, bool upload);
@@ -59,3 +62,4 @@ DWORD WINAPI runTCPthread(LPVOID upload);
 DWORD WINAPI runUDPthread(LPVOID upload);
 DWORD WINAPI runAcceptThread(LPVOID acceptSocket);
 DWORD WINAPI runUDPRecvthread(LPVOID recv);
+

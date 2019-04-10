@@ -86,6 +86,7 @@ int yPosition;
 u_long lTTL;
 std::string library[TEXT_BUF_SIZE];
 int libindex = -1;
+bool clientStream = true;
 
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: setupTCPSrv
@@ -506,6 +507,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 			}
 			break;
 		case ID_CLN_JOINSTREAM:
+			stopPlayback();
+			clientStream = true;
 			wipeScreen(cmdhwnd);
 			clearInputs(&clientUDPParams);
 			DialogBox(NULL, MAKEINTRESOURCE(IDD_CLN_JOINBROADCAST), hwnd, HandleClnJoin);
@@ -517,7 +520,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 		case ID_GEN_DISCONNECT:
 			discBool = true;
 			break;
+		case ID_CLN_DISCONNECT:
+			clientStream = false;
+			break;
+		case ID_FILE_SELECT:
+			playLocalWaveFile();
+			break;
+		case ID_STOP_MUSIC:
+			stopPlayback();
+			break;
 		}
+	
 		break;
 	case WM_DESTROY:	// Terminate program
 		PostQuitMessage(0);
@@ -527,6 +540,65 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 		return DefWindowProc(hwnd, message, wParam, lParam);
 	}
 	return 0;
+}
+
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: playLocalWaveFile()
+--
+--    DATE : April 9, 2019
+--
+--
+--    DESIGNER : Simon Chen
+--
+--    PROGRAMMER : Simon Chen
+--
+--    INTERFACE : void playLocalWaveFile()
+--
+--    RETURNS : VOID
+--
+--    NOTES :
+--		prompt user to select a wave file to play. 
+----------------------------------------------------------------------------------------------------------------------*/
+void playLocalWaveFile() {
+	
+	OPENFILENAME ofn;
+	::memset(&ofn, 0, sizeof(ofn));
+	char f1[MAX_PATH];
+	f1[0] = 0;
+	ofn.lStructSize = sizeof(ofn);
+	ofn.lpstrTitle = "Select A File";
+	ofn.lpstrFilter = "Wave Files\0*.WAV\0";
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFile = f1;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.Flags = OFN_FILEMUSTEXIST;
+
+	if (::GetOpenFileName(&ofn) != FALSE)
+	{
+		stopPlayback();
+		PlaySound(ofn.lpstrFile, NULL, SND_FILENAME | SND_ASYNC | SND_NOSTOP);
+	}
+}
+
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: stopPlayback()
+--
+--    DATE : April 9, 2019
+--
+--
+--    DESIGNER : Simon Chen
+--
+--    PROGRAMMER : Simon Chen
+--
+--    INTERFACE : void stopPlayback()
+--
+--    RETURNS : VOID
+--
+--    NOTES : 
+--		Wrapper for play sound function to stop all music started by played sound in this process.
+----------------------------------------------------------------------------------------------------------------------*/
+void stopPlayback() {
+	PlaySound(NULL, NULL, 0);
 }
 
 /*------------------------------------------------------------------------------------------------------------------
@@ -1027,11 +1099,12 @@ DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 	int counter = 0;
 	char dot[2] = ".";
 	char listening_msg[TEXT_BUF_SIZE] = "Listening to radio";
+	char dc_msg[TEXT_BUF_SIZE] = "Disconnected from server";
 	bool listen_bool = false;
 
 	discBool = false;
 
-	while (1) {
+	while (clientStream) {
 		if (discBool)
 			break;
 
@@ -1057,7 +1130,8 @@ DWORD WINAPI printSoundProgress(LPVOID hwnd) {
 			time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
 		}
 	}
-
+	wipeScreen(cmdhwnd);
+	printScreen(cmdhwnd, dc_msg);
 	return 700;
 }
 
