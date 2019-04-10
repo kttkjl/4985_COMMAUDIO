@@ -346,7 +346,7 @@ int runUdpLoop(SOCKET Listen, bool upload) {
 			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
 			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
 
-			while (time_span.count() <= 0.02) {
+			while (time_span.count() <= 0.03) {
 				end = std::chrono::high_resolution_clock::now();
 				time_span = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
 			}
