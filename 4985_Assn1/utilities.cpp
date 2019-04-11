@@ -29,6 +29,29 @@ int countActualBytes(char * buf, int len) {
 	return counter;
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: convertErrString
+--
+--    DATE : MAR 20, 2019
+--
+--    REVISIONS :
+--            (MAR 20, 2019): Created
+--
+--    DESIGNER : Jacky Li
+--
+--    PROGRAMMER : Jacky Li
+--
+--    INTERFACE : char * convertErrString(const char * string, unsigned int num)
+--                const char * string:                String describing the error
+--                unsigned int num:                        Error number (prob called with WSAGetLastError() as input )
+--
+--    RETURNS :
+--                char*  :        The concatenated string with the error number
+--
+--
+--    NOTES :
+--                    Concats a string with a number, returns the concatenated string
+----------------------------------------------------------------------------------------------------------------------*/
 char * convertErrString(const char * string, unsigned int num) {
 	char cstr[128];
 	sprintf_s(cstr, "%s %u\n", string, num);
