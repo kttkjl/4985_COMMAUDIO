@@ -100,7 +100,30 @@ int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN 
 	return 0;
 }
 
-
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: requestTCPFile
+--
+--    DATE : MAR 29, 2019
+--
+--    REVISIONS :
+--            (MAR 18, 2019): Implemented to be used with Callbacks
+--            (MAR 17, 2019): Added request file
+--            (JAN 17, 2019): Created
+--
+--    DESIGNER :    Jacky Li
+--
+--    PROGRAMMER :    Jacky Li
+--
+--    INTERFACE : int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, HWND h, bool play)
+--            0:        On success
+--
+--    RETURNS : void
+--
+--    NOTES :
+--            Sends a filename over TCP to a remote server
+--            Saves the file on disk
+--            Utilizes callbacks and sleepEX
+---------------------------------------------------------------------------------------------------------------------*/
 int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, HWND h, bool play) {
 	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
 		OutputDebugString("GlobalAlloc() failed\n");

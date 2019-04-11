@@ -245,9 +245,9 @@ int setupUDPSrv() {
 --    REVISIONS :
 --    		(MAR 18, 2019): Created
 --
---    DESIGNER : Alexander Song
+--    DESIGNER : Alexander Song, Simon Chen
 --
---    PROGRAMMER : Alexander Song
+--    PROGRAMMER : Alexander Song, Simon Chen
 --
 --    INTERFACE : void runUdpLoop(SOCKET Listen, bool upload)
 --			SOCKET Listen:		The socket which this function will setup and listen on
@@ -749,6 +749,32 @@ INT_PTR CALLBACK HandleMulticastSetup(HWND hDlg, UINT message, WPARAM wParam, LP
 	return (INT_PTR)FALSE;
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: HandleClnQuery
+--
+--    DATE : MAR 17, 2019
+--
+--    REVISIONS :
+--            (MAR 17, 2019): Created
+--
+--    DESIGNER : Jacky Li
+--
+--    PROGRAMMER : Jacky Li
+--
+--    INTERFACE : INT_PTR CALLBACK HandleClnQuery(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+--            HANDLE hDlg:        DialogBox handle
+--            UINT message        WM to trigger when DialogBox is terminated
+--            WPARAM wParam        Additional message-specific information.
+--            LPARAM lParam        Additional message-specific information.
+--
+--    RETURNS : INT_PTR
+--            Typically, the dialog box procedure should return TRUE if it processed the message, and FALSE if it did not.
+--            If the dialog box procedure returns FALSE, the dialog manager performs the default dialog operation in
+--            response to the message.
+--
+--    NOTES :
+--            Handles params specified by the user in the GUI that appears, sets the Address
+----------------------------------------------------------------------------------------------------------------------*/
 INT_PTR CALLBACK HandleClnQuery(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
 	// Variables
 	HWND idd_packetsize;
