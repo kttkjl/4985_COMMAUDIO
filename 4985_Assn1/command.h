@@ -45,12 +45,9 @@ void set_print_x(int x);
 void set_print_y(int y);
 void playLocalWaveFile();
 void stopPlayback();
-
-// Custom functions
 int runUdpLoop(SOCKET s, bool upload);
 
 DWORD WINAPI printSoundProgress(LPVOID hwnd);
-
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK HandleMulticastSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);

@@ -1,11 +1,68 @@
+/*------------------------------------------------------------------------------------------------------------------
+	--	SOURCE FILE : Client.cpp 
+	--
+	--	PROGRAM :	4985_COMMAUDIO.exe
+	--
+	--	FUNCTIONS :
+	--
+	--		int setupTCPCln(LPQueryParams, SOCKET *, WSADATA *, SOCKADDR_IN *);
+	--		int setupUDPCln(LPQueryParams, SOCKET *, WSADATA *);
+	--		int requestTCPFile(SOCKET * , SOCKADDR_IN *, const char *, HWND, bool);
+	--		void joiningStream(LPQueryParams, SOCKET *, HWND, bool *);
+	--		static WAVEHDR* allocateBufferMemory();
+	--		static void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size);
+	--		static void CALLBACK waveOutProc(HWAVEOUT, UINT, DWORD, DWORD, DWORD);
+	--		void updateChunkPosition(WAVEHDR* current);
+	--
+	--
+	--
+	--	DATE: April 10, 2019
+	--
+	--	REVISIONS :
+	--			April 10, 2019: Created
+	--
+	--	DESIGNER : Jacky Li, Alexander Song, Simon Chen
+	--
+	--	PROGRAMMER : Jacky Li, Alexander Song, Simon Chen
+	--
+	--	NOTES :
+	--		This is the client mode of COMMAUDIO which contains 2 modes.
+	--		1. TCP file request
+	--		2. UDP radio listen
+-------------------------------------------------------------------------------------------------------------------*/
 #include "Client.h"
 
 struct ip_mreq				stMreq;
 SOCKADDR_IN					lclAddr, srcAddr;
 LPSOCKET_INFORMATION		SI;
 SOCKET *					s_sock;
-extern bool clientStream;
+extern bool					clientStream;
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: setupTCPCln
+--
+--    DATE : APR 10, 2019
+--
+--    REVISIONS :
+--            (MAR 18, 2019): Revised to take in QueryParams
+--            (FEB 08, 2019): Created
+--
+--    DESIGNER : Jacky Li
+--
+--    PROGRAMMER : Jacky Li
+--
+--    INTERFACE : int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN * tgtAddr)
+--                    LPQueryParams qp:        pointer to QueryParams object to be used to setup TCP server
+--                    SOCKET * sock:            Socket to communicate with the remote server
+--                    WSADATA * wsaData:        structure contains information about the Windows Sockets implementation
+--                    SOCKADDR_IN * tgtAddr:    Target address struct to be populated
+--    RETURNS : int
+--                0 if everything is successful
+--
+--    NOTES :
+--            Sets up all the global variables this program needs to make it ready to accept connections from a socket,
+--            using the TCP protocol
+----------------------------------------------------------------------------------------------------------------------*/
 int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN * tgtAddr) {
 	int err;
 	struct hostent *hp;
@@ -42,6 +99,7 @@ int setupTCPCln(LPQueryParams qp, SOCKET * sock, WSADATA * wsaData, SOCKADDR_IN 
 
 	return 0;
 }
+
 
 int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, HWND h, bool play) {
 	if ((SI = (LPSOCKET_INFORMATION)GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL) {
@@ -134,6 +192,7 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, 
 	return 0;
 }
 
+
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: allocateBufferMemory
 --
@@ -148,7 +207,7 @@ int requestTCPFile(SOCKET * sock, SOCKADDR_IN * tgtAddr, const char * fileName, 
 --
 --    RETURNS : WAVEHDR*, memory allocated
 --
---    NOTES : allocate memory according to CHUNK_NUM and CHUNK_SIZE
+--    NOTES : allocate memory for WAVEHDR array according to CHUNK_NUM and CHUNK_SIZE
 ----------------------------------------------------------------------------------------------------------------------*/
 WAVEHDR* allocateBufferMemory()
 {
@@ -173,6 +232,7 @@ WAVEHDR* allocateBufferMemory()
 	return chunks;
 }
 
+
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: updateChunkPosition
 --
@@ -188,7 +248,7 @@ WAVEHDR* allocateBufferMemory()
 --
 --    RETURNS : void
 --
---    NOTES : update buffer location, if buffer is full wait until at least 1 buffer is free then continue
+--    NOTES : update buffer location, if buffer is full wait until next buffer slot is free then continue
 ----------------------------------------------------------------------------------------------------------------------*/
 void updateChunkPosition(WAVEHDR* index) {
 
@@ -338,6 +398,7 @@ void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size)
 	}
 }
 
+
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: joiningStream
 --
@@ -347,7 +408,7 @@ void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size)
 --    		(MAR 19, 2019): Created
 --			(MAR 27, 2019): Play audio received (Simon)
 --
---    DESIGNER : Alexander Song
+--    DESIGNER : Alexander Song, Simon Chen
 --
 --    PROGRAMMER : Alexander Song, Simon Chen
 --
@@ -359,9 +420,11 @@ void addtoBufferAndPlay(HWAVEOUT hWaveOut, LPSTR data, int size)
 --    RETURNS : void
 --
 --    NOTES :
---			This function contains the WSARecvFrom call. The client will constantly be trying to receive
+--			This function contains the WSARecvFrom call. 
+--			WAVEHDR buffer and wave header are initialized here.
+--			The client will constantly be trying to receive
 --			any incoming datagrams through overlapped and completion routine IO.
---			When a datagram is received, it will be read and play the sound in the packets.
+--			Then store it in buffer and queue it for playback.
 ----------------------------------------------------------------------------------------------------------------------*/
 void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 {
@@ -436,9 +499,6 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 
 	} // end of infinite loop
 
-	//wait for sound to finish playing
-	//while (chunksAvailable < CHUNK_NUM) {}
-
 	waveOutPause(hWaveOut);
 
 	//unprepare all chunks
@@ -468,7 +528,6 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 }
 
 
-
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: waveOutProc
 --
@@ -480,12 +539,13 @@ void joiningStream(LPQueryParams qp, SOCKET * sock, HWND hwnd, bool * dB)
 --    PROGRAMMER : Simon Chen
 --
 --    INTERFACE : void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
+--				windows function. Refer to windows documentation for wave functions.
 --
 --    RETURNS : void
 --
 --    NOTES :
 --			Wavedevice callback function(runs on different thread)
---			update WAVEHDR array index
+--			update buffer status
 ----------------------------------------------------------------------------------------------------------------------*/
 static void CALLBACK waveOutProc(HWAVEOUT hWaveOut, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
 {

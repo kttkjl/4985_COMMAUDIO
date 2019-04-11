@@ -9,29 +9,32 @@
 	--	
 	--	FUNCTIONS :
 	--	
-	--		int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hprevInstance, LPSTR lspszCmdParam, int nCmdShow)
-	--	
-	--		LRESULT CALLBACK WndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
-	--	
-	--		void printScreen(HWND hwnd, char *buffer)
-	--	
-	--		void wipeScreen(HWND hwnd);
 	--		
-	--		void runUdpLoop(SOCKET s, bool upload);
-	--		
-	--		int countActualBytes(char * buf, int len);
+	--	void printScreen(HWND hwnd, char *buffer);
+	--	void modPrintScreen(HWND hwnd, char *buffer, int startX);
+	--	void wipeScreen(HWND hwnd);
+	--	void printLibrary(HWND h);
+	--	void clearInputs(LPQueryParams qp);
+	--	void set_print_x(int x);
+	--	void set_print_y(int y);
+	--	void playLocalWaveFile();
+	--	void stopPlayback();
+	--	int runUdpLoop(SOCKET s, bool upload);
+	--	DWORD WINAPI printSoundProgress(LPVOID hwnd);
+	--	LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+	--	INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+	--	INT_PTR CALLBACK HandleMulticastSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+	--	INT_PTR CALLBACK HandleClnQuery(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+	--	INT_PTR CALLBACK HandleClnJoin(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+	--	DWORD WINAPI runTCPthread(LPVOID upload);
+	--	DWORD WINAPI runUDPthread(LPVOID upload);
+	--	DWORD WINAPI runAcceptThread(LPVOID acceptSocket);
+	--	DWORD WINAPI runUDPRecvthread(LPVOID recv);
 	--	
-	--		DWORD WINAPI runTCPthread(LPVOID upload);
-	--		
-	--		DWORD WINAPI runUDPthread(LPVOID upload);
-	--		
-	--	
-	--		INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
-	--	
-	--	DATE: MAR 10, 2019
+	--	DATE: April 10, 2019
 	--	
 	--	REVISIONS : 
-	--			MAR 10, 2019: Created
+	--			April 10, 2019: Created
 	--	
 	--	DESIGNER : Jacky Li, Alexander Song, Simon Chen
 	--	
@@ -40,6 +43,7 @@
 	--	NOTES :
 	--		The program will listen on sockets using TCP/UDP protocol, and collect statistics on the transaction
 	--		The program will continue to listen on the specified ports, until quit, or a new one has been chosen
+	--		The program will play user specified wave file on local machine.
 -------------------------------------------------------------------------------------------------------------------*/
 
 #define STRICT
@@ -611,30 +615,31 @@ void stopPlayback() {
 /*------------------------------------------------------------------------------------------------------------------
 --    FUNCTION: HandleTCPSrvSetup
 --
---    DATE : JAN 17, 2019
+--    DATE : APR 10, 2019
 --
 --    REVISIONS :
---    		(JAN 17, 2019): Created
+--            (MAR 18, 2019): Removed packet size population
+--            (MAR 17, 2019): Revised to use QueryParams
+--            (JAN 17, 2019): Created
 --
 --    DESIGNER : Jacky Li
 --
 --    PROGRAMMER : Jacky Li
 --
 --    INTERFACE : INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
---			HANDLE hDlg:		DialogBox handle
---			UINT message		WM to trigger when DialogBox is terminated
---			WPARAM wParam		Additional message-specific information.
---			LPARAM lParam		Additional message-specific information.
+--            HANDLE hDlg:        DialogBox handle
+--            UINT message        WM to trigger when DialogBox is terminated
+--            WPARAM wParam        Additional message-specific information.
+--            LPARAM lParam        Additional message-specific information.
 --
 --    RETURNS : INT_PTR
---			Typically, the dialog box procedure should return TRUE if it processed the message, and FALSE if it did not. 
---			If the dialog box procedure returns FALSE, the dialog manager performs the default dialog operation in 
---			response to the message.
+--            Typically, the dialog box procedure should return TRUE if it processed the message, and FALSE if it did not.
+--            If the dialog box procedure returns FALSE, the dialog manager performs the default dialog operation in
+--            response to the message.
 --
 --    NOTES :
---			Handles user input as a query, once user has inputted, a custom window message will be signalled
---			The user input will be saved to a global query buffer, then will be processed
---			This is a custom DialogProc function
+--            Handles populating the QueryParams struct after user has finished filling in the dialog
+--            The QueryParam will be used in creating the TCP server to listen for file requests
 ----------------------------------------------------------------------------------------------------------------------*/
 INT_PTR CALLBACK HandleTCPSrvSetup(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -917,7 +922,30 @@ DWORD WINAPI runTCPthread(LPVOID upload) {
 	return 200;
 }
 
-// SRV: For TCP transfer of files
+
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: runAcceptThread
+--
+--    DATE : APR 10, 2019
+--
+--    REVISIONS :
+--            (MAR 22, 2019): Recounted buffer again, bug fix
+--            (MAR 20, 2019): Updated to use current directory for filename
+--            (MAR 12, 2019): Created
+--
+--    DESIGNER : Jacky Li
+--
+--    PROGRAMMER : Jacky Li
+--
+--    INTERFACE : DWORD WINAPI runAcceptThread(LPVOID acceptSocket)
+--            VPVOID acceptSocket:        The accepted socket to be used to transfer a file over TCP
+--
+--    RETURNS : DWORD
+--            200 on completion
+--
+--    NOTES :
+--            Thread function to process each incoming accepted TCP client, closes connection when last part of file sent
+----------------------------------------------------------------------------------------------------------------------*/
 DWORD WINAPI runAcceptThread(LPVOID acceptSocket) {
 	OutputDebugString("Running Accept thread\n");
 

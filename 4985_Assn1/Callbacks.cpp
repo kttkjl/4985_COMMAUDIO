@@ -27,6 +27,31 @@ void set_hwnd(HWND h)
 	hwnd = h;
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: recvFileReqCallback
+--
+--    DATE : APR 4, 2019
+--
+--    REVISIONS :
+--            (APR 4, 2019):        Clean up
+--            (MAR 17, 2019):        Created
+--
+--    DESIGNER : Jacky Li
+--
+--    PROGRAMMER : Jacky Li
+--
+--    INTERFACE : void CALLBACK recvFileReqCallback(DWORD Error, DWORD BytesTransferred,
+					LPWSAOVERLAPPED Overlapped, DWORD InFlags)
+--            DWORD dwError:                        If error occured, the corresponding error no
+--            DWORD cbTransferred:                Total bytes transferred in this transaction
+--            LPWSAOVERLAPPED lpOverlapped:        LPOVERLAPPED structure, using the hEvent to store pointer to SOCKET_INFORMATION
+--            DWORD dwFlags:                        Flags, ignored for now
+--
+--    RETURNS : void CALLBACK
+--
+--    NOTES :
+--            Callback function for when the TCP Server has received a file request
+----------------------------------------------------------------------------------------------------------------------*/
 void CALLBACK recvFileReqCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags) {
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(Overlapped->hEvent);
 
@@ -44,7 +69,31 @@ void CALLBACK recvFileReqCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 	OutputDebugString(cstr);
 }
 
-// For when client gets file sent to it
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: clnRecvFileCallback
+--
+--    DATE : APR 4, 2019
+--
+--    REVISIONS :
+--            (APR 4, 2019):        Clean up
+--            (MAR 17, 2019):        Created
+--
+--    DESIGNER : Jacky Li
+--
+--    PROGRAMMER : Jacky Li
+--
+--    INTERFACE : void CALLBACK clnRecvFileCallback(DWORD Error, DWORD BytesTransferred,
+					LPWSAOVERLAPPED Overlapped, DWORD InFlags)
+--            DWORD dwError:                        If error occured, the corresponding error no
+--            DWORD cbTransferred:                Total bytes transferred in this transaction
+--            LPWSAOVERLAPPED lpOverlapped:        LPOVERLAPPED structure, using the hEvent to store pointer to SOCKET_INFORMATION
+--            DWORD dwFlags:                        Flags, ignored for now
+--
+--    RETURNS : void CALLBACK
+--
+--    NOTES :
+--            Callback function for when the TCP Client has finished a WSARecv call
+----------------------------------------------------------------------------------------------------------------------*/
 void CALLBACK clnRecvFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags) {
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(Overlapped->hEvent);
 	if (Error != 0 || BytesTransferred == 0)
@@ -61,6 +110,32 @@ void CALLBACK clnRecvFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 	OutputDebugString(cstr);
 }
 
+
+/*------------------------------------------------------------------------------------------------------------------
+--    FUNCTION: srvSentFileCallback
+--
+--    DATE : APR 4, 2019
+--
+--    REVISIONS :
+--            (APR 4, 2019):        Clean up
+--            (MAR 17, 2019):        Created
+--
+--    DESIGNER : Jacky Li
+--
+--    PROGRAMMER : Jacky Li
+--
+--    INTERFACE : void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred,
+					LPWSAOVERLAPPED Overlapped, DWORD InFlags)
+--            DWORD dwError:                        If error occured, the corresponding error no
+--            DWORD cbTransferred:                Total bytes transferred in this transaction
+--            LPWSAOVERLAPPED lpOverlapped:        LPOVERLAPPED structure, using the hEvent to store pointer to SOCKET_INFORMATION
+--            DWORD dwFlags:                        Flags, ignored for now
+--
+--    RETURNS : void CALLBACK
+--
+--    NOTES :
+--            Callback function for when the TCP Server has finished a WSASend call
+----------------------------------------------------------------------------------------------------------------------*/
 void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVERLAPPED Overlapped, DWORD InFlags) {
 	LPSOCKET_INFORMATION SI = (LPSOCKET_INFORMATION)(Overlapped->hEvent);
 	if (Error != 0 || BytesTransferred == 0)
@@ -88,9 +163,9 @@ void CALLBACK srvSentFileCallback(DWORD Error, DWORD BytesTransferred, LPWSAOVER
 --    		(MAR 17, 2019): Created
 --			(APR 4, 2019): clean up
 --
---    DESIGNER : Jacky Li, Alexander Song
+--    DESIGNER : Jacky Li, Alexander Song, Simon Chen
 --
---    PROGRAMMER : Alexander Song
+--    PROGRAMMER : Alexander Song, Simon Chen
 --
 --    INTERFACE : void CALLBACK completeCallback(DWORD dwError, DWORD cbTransferred, 
 --						LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags)
